@@ -70,3 +70,6 @@ export const MAX_RENDER_SCALE = 4;
 // Post-processing effect default values
 /** Default gamma value (no correction) */
 export const DEFAULT_GAMMA = 1.0;
+
+/** Default bloom brightness threshold (0.0-1.0 scale) */
+export const DEFAULT_BLOOM_THRESHOLD = 0.6;
