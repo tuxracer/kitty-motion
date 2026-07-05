@@ -11,7 +11,7 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
-    "build": "tsc --noEmit && tsup --entry.index=src/index.ts --format esm --dts",
+    "build": "tsc --noEmit && tsup --entry.index=src/index.ts --entry.encode-worker=src/kittyEncodeWorker/index.ts --format esm --dts",
     "test": "vitest",
     "test:run": "vitest run",
     "typecheck": "tsc --noEmit",
