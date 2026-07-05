@@ -9,6 +9,12 @@ export const RGB24_BYTES_PER_PIXEL = 3;
 // Kitty Graphics Protocol Constants
 // =============================================================================
 
+/** Default native width in pixels */
+export const DEFAULT_NATIVE_WIDTH = 256;
+
+/** Default native height in pixels */
+export const DEFAULT_NATIVE_HEIGHT = 240;
+
 /** Typical terminal cell width in pixels */
 export const CELL_WIDTH_PX = 9;
 
