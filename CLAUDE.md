@@ -7,7 +7,7 @@
 - `pnpm lint` / `pnpm lint:fix` - ESLint over `src/`
 - `pnpm build` - typecheck then tsup. The build has two entries: `index` and `encode-worker` (the PNG encode worker must ship as its own bundle so it can be loaded in a worker thread)
 - `node examples/bouncing-ball.ts` - run the demo (requires Node >= 24; a Kitty-graphics-capable terminal gets full-quality graphics, other terminals fall back to block glyphs); `examples/plasma.ts` is a full-frame-change stress demo; `examples/green-hill.ts` is a parallax side-scroller workload. Demos share `examples/demoHarness/` (capability detection, debug log, interactive status bar, exit metrics summary); new demos supply a name, screen options, and a `renderFrame` callback. While a demo runs, `m` cycles render modes (kitty, cell truecolor, cell 256, cell 16), `g` toggles the cell glyph strategy (half blocks vs background-colored spaces), `e` cycles effect presets, `p` toggles pause, `q` or Ctrl-C exits
-- Demo env overrides force capability paths for testing: `DEMO_RENDER_MODE=cell|kitty` (force the block-glyph fallback or the graphics protocol), `DEMO_DIRTY_RECTS=0|1`, `DEMO_FILE_TRANSFER=0|1`, `DEMO_LIMIT_COLORS=0|16|256` (pin cell-mode color depth; 0 means truecolor), `DEMO_CELL_GLYPH=half-block|background` (pin the cell glyph strategy), `DEMO_CELL_SAMPLING=box|nearest` (pin the cell downsampling strategy). Unset means probe-detected behavior. Env overrides set the initial state; the status bar shortcuts can change render mode and effects afterward at runtime
+- Demo env overrides force capability paths for testing: `DEMO_RENDER_MODE=kitty|cell|half-block|cell-background` (force the graphics protocol or the block-glyph fallback; `cell` is an alias for the default `half-block`), `DEMO_DIRTY_RECTS=0|1`, `DEMO_FILE_TRANSFER=0|1`, `DEMO_LIMIT_COLORS=0|16|256` (pin cell-mode color depth; 0 means truecolor), `DEMO_CELL_GLYPH=half-block|cell-background` (pin the cell render mode), `DEMO_CELL_SAMPLING=box|nearest` (pin the cell downsampling strategy). Unset means probe-detected behavior. Env overrides set the initial state; the status bar shortcuts can change render mode and effects afterward at runtime
 
 ## Architecture
 
@@ -16,7 +16,7 @@ Data flow: `Screen` (public API, constructed via the async `createScreen()`, whi
 On terminals without Kitty graphics support (probed by
 `detectKittyGraphicsSupport()`), `Screen` instead drives `CellRenderer`,
 which renders frames as colored Unicode block glyphs with cell-level diffing
-and no worker thread. On macOS Terminal.app (probed by `detectCellGlyphMode()` and `detectCellSampling()` from `TERM_PROGRAM`), cells render as background-colored spaces at 1 pixel per cell with nearest sampling instead of box-averaged half blocks, because Terminal.app draws block glyphs from the font and no font tiles the cell exactly.
+and no worker thread. On macOS Terminal.app (probed by `detectCellRenderMode()` and `detectCellSampling()` from `TERM_PROGRAM`), cells render as background-colored spaces at 1 pixel per cell with nearest sampling instead of box-averaged half blocks, because Terminal.app draws block glyphs from the font and no font tiles the cell exactly.
 
 After the initial frames, `KittyRenderer` sends only the changed bounding
 rectangle as an animation-protocol frame edit (`a=f`) when the terminal
