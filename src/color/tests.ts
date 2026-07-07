@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAnsi16LUT,
   buildAnsi256LUT,
+  buildEmojiLUT,
   buildGammaLUT,
   calculateLuminance8,
   convertFrameToRgb24,
@@ -9,6 +10,7 @@ import {
   rgb15ToRgb24,
   rgbToAnsi256,
   rgbToAnsi16,
+  rgbToEmoji,
 } from './index.ts';
 
 describe('buildGammaLUT', () => {
@@ -107,6 +109,22 @@ describe('palette quantization LUTs', () => {
     }
   });
 
+  it('emoji LUT lookups match direct quantization for exact 5-bit colors', () => {
+    const lut = buildEmojiLUT();
+    for (let r5 = 0; r5 < 32; r5++) {
+      for (let g5 = 0; g5 < 32; g5++) {
+        for (let b5 = 0; b5 < 32; b5++) {
+          const r = expand5(r5);
+          const g = expand5(g5);
+          const b = expand5(b5);
+          if (lut[paletteLUTIndex(r, g, b)] !== rgbToEmoji(r, g, b)) {
+            expect.fail(`mismatch at rgb(${r},${g},${b})`);
+          }
+        }
+      }
+    }
+  });
+
   it('maps well-known colors through the LUT', () => {
     const lut256 = buildAnsi256LUT();
     expect(lut256[paletteLUTIndex(0, 0, 0)]).toBe(16);
@@ -132,6 +150,22 @@ describe('rgbToAnsi16', () => {
   it('maps nearby colors to the nearest palette entry', () => {
     expect(rgbToAnsi16(250, 10, 5)).toBe(9); // near bright red
     expect(rgbToAnsi16(10, 10, 10)).toBe(0); // near black
+  });
+});
+
+describe('rgbToEmoji', () => {
+  it('returns the exact palette index for each palette color', () => {
+    expect(rgbToEmoji(255, 255, 255)).toBe(0); // white
+    expect(rgbToEmoji(250, 220, 80)).toBe(1); // yellow
+    expect(rgbToEmoji(220, 40, 40)).toBe(3); // red
+    expect(rgbToEmoji(50, 160, 30)).toBe(5); // green
+    expect(rgbToEmoji(50, 120, 220)).toBe(6); // blue
+    expect(rgbToEmoji(0, 0, 0)).toBe(8); // black
+  });
+
+  it('picks the nearest palette color for an off-palette color', () => {
+    // Mid gray is closest to brown (130,80,30) among the nine
+    expect(rgbToEmoji(80, 80, 80)).toBe(4);
   });
 });
 

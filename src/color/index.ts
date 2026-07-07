@@ -26,6 +26,7 @@ import {
   ANSI256_GRAY_BASE,
   ANSI256_GRAY_STEP,
   ANSI16_PALETTE,
+  EMOJI_COLORS,
   PALETTE_LUT_SIZE,
   PALETTE_LUT_CHANNEL_LEVELS,
   PALETTE_LUT_CHANNEL_DROP,
@@ -194,6 +195,21 @@ export const rgbToAnsi16 = (r: number, g: number, b: number): number => {
   return best;
 };
 
+/** Nearest emoji-palette index (0 to 8) for an rgb24 color, by squared sRGB distance */
+export const rgbToEmoji = (r: number, g: number, b: number): number => {
+  let best = 0;
+  let bestDistance = Infinity;
+  for (let i = 0; i < EMOJI_COLORS.length; i++) {
+    const [pr, pg, pb] = EMOJI_COLORS[i].rgb;
+    const distance = squaredDistance(r, g, b, pr, pg, pb);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = i;
+    }
+  }
+  return best;
+};
+
 /**
  * Pack an rgb24 color into a 15-bit palette-LUT index from the top 5 bits of
  * each channel. Colors differing only in the low 3 bits share an index, so a
@@ -227,6 +243,9 @@ export const buildAnsi256LUT = (): Uint8Array => buildPaletteLUT(rgbToAnsi256);
 
 /** Quantization LUT mapping paletteLUTIndex to the nearest ANSI 16 palette index */
 export const buildAnsi16LUT = (): Uint8Array => buildPaletteLUT(rgbToAnsi16);
+
+/** Quantization LUT mapping paletteLUTIndex to the nearest emoji-palette index */
+export const buildEmojiLUT = (): Uint8Array => buildPaletteLUT(rgbToEmoji);
 
 // Gamma-baked rgb15 -> rgb24 LUT (3 output bytes per 15-bit color), cached
 // per gammaLUT instance. A gamma change builds a new gammaLUT array, which

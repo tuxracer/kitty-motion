@@ -1,3 +1,5 @@
+import type { EmojiColor } from './types.ts';
+
 /** Bit mask isolating one 5-bit RGB15 channel after shifting it down to bits 0-4 */
 export const RGB15_CHANNEL_MASK = 0x1f;
 
@@ -108,3 +110,21 @@ export const ANSI16_PALETTE: ReadonlyArray<readonly [number, number, number]> = 
   [255, 255, 255],
 ];
 /* eslint-enable @typescript-eslint/no-magic-numbers */
+
+/** Render palette for emoji mode: nine emoji squares and their RGB values */
+/* eslint-disable @typescript-eslint/no-magic-numbers */
+export const EMOJI_COLORS: readonly EmojiColor[] = [
+  { emoji: '⬜', rgb: [255, 255, 255] },
+  { emoji: '🟨', rgb: [250, 220, 80] },
+  { emoji: '🟧', rgb: [240, 140, 20] },
+  { emoji: '🟥', rgb: [220, 40, 40] },
+  { emoji: '🟫', rgb: [130, 80, 30] },
+  { emoji: '🟩', rgb: [50, 160, 30] },
+  { emoji: '🟦', rgb: [50, 120, 220] },
+  { emoji: '🟪', rgb: [160, 70, 200] },
+  { emoji: '⬛', rgb: [0, 0, 0] },
+];
+/* eslint-enable @typescript-eslint/no-magic-numbers */
+
+/** Emoji glyphs indexed by palette index, for the renderer's per-cell emit */
+export const EMOJI_GLYPHS: readonly string[] = EMOJI_COLORS.map((c) => c.emoji);
