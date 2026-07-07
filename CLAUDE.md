@@ -6,6 +6,7 @@
 - `pnpm test` - vitest in watch mode (`pnpm test:run` for a single pass)
 - `pnpm lint` / `pnpm lint:fix` - ESLint over `src/`
 - `pnpm build` - typecheck then tsup. The build has two entries: `index` and `encode-worker` (the PNG encode worker must ship as its own bundle so it can be loaded in a worker thread)
+- `pnpm generate:ascii-shapes` - regenerate `src/asciiShapes/shapeVectors.ts` (the committed per-character shape-vector table) from the unscii-16 bitmap font via `scripts/generateAsciiShapes/`. Only needed when the shape sampling geometry or glyph set changes
 - `node examples/bouncing-ball.ts` - run the demo (requires Node >= 24; a Kitty-graphics-capable terminal gets full-quality graphics, other terminals fall back to block glyphs); `examples/plasma.ts` is a full-frame-change stress demo; `examples/green-hill.ts` is a parallax side-scroller workload. Demos share `examples/demoHarness/` (capability detection, debug log, interactive status bar, exit metrics summary); new demos supply a name, screen options, and a `renderFrame` callback. While a demo runs, `m` cycles render modes labeled by their library `renderMode` value (kitty, plus half-block and cell-background each at truecolor/256/16 color depth, emoji, and ascii), `e` cycles effect presets, `p` toggles pause, `q` or Ctrl-C exits
 - Demo env overrides force capability paths for testing: `DEMO_RENDER_MODE=kitty|cell|half-block|cell-background|emoji|ascii` (force the graphics protocol or the block-glyph fallback, where `cell` is an alias for the default `half-block`, and `ascii` forces the shape-matched ASCII renderer), `DEMO_DIRTY_RECTS=0|1`, `DEMO_FILE_TRANSFER=0|1`, `DEMO_LIMIT_COLORS=0|16|256` (pin cell-mode color depth; 0 means truecolor), `DEMO_CELL_SAMPLING=box|nearest` (pin the cell downsampling strategy). Unset means probe-detected behavior. Env overrides set the initial state; the status bar shortcuts can change render mode and effects afterward at runtime
 
@@ -45,6 +46,7 @@ The test for adding an export: could a developer building their own pipeline use
 - **Zero runtime dependencies**: this library ships with none (stated in the README as a design constraint). Never add a runtime dependency; hand-roll small utilities instead.
 - **`minimumReleaseAge` install policy**: `pnpm-workspace.yaml` blocks package versions published less than 7 days ago. If `pnpm add` or `pnpm update` fails to resolve a brand-new release, pin an older version instead of fighting the resolver.
 - **AGENTS.md is a symlink to CLAUDE.md**: edit CLAUDE.md only; never create a separate AGENTS.md.
+- **`src/asciiShapes/shapeVectors.ts` is generated, never hand-edit it**: it carries a "GENERATED — DO NOT EDIT" banner and is rebuilt by `pnpm generate:ascii-shapes`. Its region-sampling geometry must stay byte-for-byte identical to the runtime sampler in `CellRenderer`, so the grid constants are imported from `src/asciiShapes/consts.ts` on both sides. If you change the sampling, update that shared module and regenerate, don't edit the table by hand
 
 ## Git
 
