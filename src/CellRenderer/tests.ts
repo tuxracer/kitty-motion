@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CellRenderer } from './index.ts';
+import { EMOJI_COLORS } from '../color/index.ts';
 
 // Glyph mode auto-detects from TERM_PROGRAM. Pin the environment so the
 // half-block expectations hold regardless of which terminal runs the tests.
@@ -737,5 +738,49 @@ describe('CellRenderer nearest sampling', () => {
       );
       expect(payload).toBe(`${CSI}1;1H${CSI}48;2;0;0;255m ${CSI}48;2;255;255;255m ${RESET}`);
     });
+  });
+});
+
+describe('CellRenderer emoji mode', () => {
+  it('renders one emoji per cell by nearest palette color, no SGR', () => {
+    const renderer = new CellRenderer({
+      sourceWidth: 2,
+      sourceHeight: 2,
+      renderMode: 'emoji',
+      layout: { cols: 2, rows: 2, offsetCol: 1, offsetRow: 1 },
+    });
+    const payload = renderer.renderRgb24(
+      frameOf(
+        [
+          [255, 0, 0], [50, 120, 220], // red -> 3, blue -> 6
+          [50, 160, 30], [255, 255, 255], // green -> 5, white -> 0
+        ],
+        2,
+      ),
+    );
+    expect(payload).toBe(
+      `${CSI}1;1H${EMOJI_COLORS[3].emoji}${EMOJI_COLORS[6].emoji}` +
+        `${CSI}2;1H${EMOJI_COLORS[5].emoji}${EMOJI_COLORS[0].emoji}` +
+        RESET,
+    );
+    expect(payload).not.toContain('38;');
+    expect(payload).not.toContain('48;');
+    expect(payload).not.toContain('▀');
+  });
+
+  it('positions emoji diff runs at double-width columns', () => {
+    const renderer = new CellRenderer({
+      sourceWidth: 3,
+      sourceHeight: 1,
+      renderMode: 'emoji',
+      layout: { cols: 3, rows: 1, offsetCol: 1, offsetRow: 1 },
+    });
+    renderer.renderRgb24(frameOf([[255, 255, 255], [255, 255, 255], [255, 255, 255]], 3));
+    // Change only the middle cell (grid column 1) to red
+    const payload = renderer.renderRgb24(
+      frameOf([[255, 255, 255], [255, 0, 0], [255, 255, 255]], 3),
+    );
+    // Grid column 1 addresses terminal column offsetCol + 1*2 = 3
+    expect(payload).toBe(`${CSI}1;3H${EMOJI_COLORS[3].emoji}${RESET}`);
   });
 });

@@ -109,3 +109,6 @@ export const BACKGROUND_CELL_PIXELS_Y = 1;
 
 /** Half-pixel offset addressing the center of a target pixel's source region */
 export const SAMPLE_CENTER_OFFSET = 0.5;
+
+/** Terminal columns one emoji glyph occupies (emoji squares render double-wide) */
+export const EMOJI_COLUMNS_PER_CELL = 2;

@@ -2,7 +2,9 @@ import {
   allocateFrameBufferLike,
   buildAnsi16LUT,
   buildAnsi256LUT,
+  buildEmojiLUT,
   convertFrameToRgb24,
+  EMOJI_GLYPHS,
   frameUnitsPerPixel,
   getLinearLightLUTs,
   paletteLUTIndex,
@@ -27,6 +29,7 @@ import {
   CELL_PIXELS_Y,
   BACKGROUND_GLYPH,
   BACKGROUND_CELL_PIXELS_Y,
+  EMOJI_COLUMNS_PER_CELL,
   SAMPLE_CENTER_OFFSET,
   SGR_RESET,
   NO_ACTIVE_COLOR,
@@ -72,6 +75,10 @@ export class CellRenderer {
   // Derived from renderMode (vertical pixels per cell and the emitted glyph)
   private pixelsPerCell: number;
   private glyph: string;
+  // Terminal columns each cell occupies (2 for double-wide emoji, else 1)
+  private columnsPerCell: number;
+  // Emoji glyphs indexed by palette index in emoji mode, null otherwise
+  private emojiGlyphs: readonly string[] | null;
   private cellSampling: CellSampling;
   // Linear-light LUT pair for gamma-correct box averaging
   private toLinear: Uint16Array;
@@ -130,13 +137,17 @@ export class CellRenderer {
     this.renderMode = options.renderMode ?? detectCellRenderMode();
     this.pixelsPerCell = this.renderMode === 'half-block' ? CELL_PIXELS_Y : BACKGROUND_CELL_PIXELS_Y;
     this.glyph = this.renderMode === 'half-block' ? HALF_BLOCK_GLYPH : BACKGROUND_GLYPH;
+    this.columnsPerCell = this.renderMode === 'emoji' ? EMOJI_COLUMNS_PER_CELL : 1;
+    this.emojiGlyphs = this.renderMode === 'emoji' ? EMOJI_GLYPHS : null;
     this.cellSampling = options.cellSampling ?? detectCellSampling();
     const linearLUTs = getLinearLightLUTs();
     this.toLinear = linearLUTs.toLinear;
     this.toSrgb = linearLUTs.toSrgb;
     this.layoutOverride = options.layout;
 
-    if (this.colorDepth === COLOR_DEPTH_16) {
+    if (this.renderMode === 'emoji') {
+      this.paletteLUT = buildEmojiLUT(); // fixed emoji palette; limitColors is ignored
+    } else if (this.colorDepth === COLOR_DEPTH_16) {
       this.paletteLUT = buildAnsi16LUT();
     } else if (this.colorDepth === COLOR_DEPTH_256) {
       this.paletteLUT = buildAnsi256LUT();
@@ -159,6 +170,7 @@ export class CellRenderer {
         sourceHeight: this.sourceHeight,
         pixelAspectRatio: this.pixelAspectRatio,
         reservedRows: this.reservedRows,
+        columnsPerCell: this.columnsPerCell,
       });
     this.cols = layout.cols;
     this.rows = layout.rows;
@@ -237,6 +249,10 @@ export class CellRenderer {
   // assembled from precomputed string tables (see consts) because this runs
   // once per changed cell.
   private sgrFor(fg: number, bg: number, activeFg: number, activeBg: number): string {
+    // Emoji glyphs carry their own color, so emoji mode emits no SGR
+    if (this.renderMode === 'emoji') {
+      return '';
+    }
     let params = '';
     if (this.renderMode === 'half-block' && fg !== activeFg) {
       if (this.colorDepth === COLOR_DEPTH_16) {
@@ -398,7 +414,7 @@ export class CellRenderer {
         out += this.sgrFor(this.cellFg[ci], this.cellBg[ci], activeFg, activeBg);
         activeFg = this.cellFg[ci];
         activeBg = this.cellBg[ci];
-        out += this.glyph;
+        out += this.emojiGlyphs !== null ? this.emojiGlyphs[this.cellBg[ci]] : this.glyph;
       }
     }
     return out + SGR_RESET;
@@ -420,7 +436,7 @@ export class CellRenderer {
           cx++;
           continue;
         }
-        out += moveCursor(this.offsetRow + cy, this.offsetCol + cx);
+        out += moveCursor(this.offsetRow + cy, this.offsetCol + cx * this.columnsPerCell);
         while (
           cx < this.cols &&
           (this.cellFg[ci] !== this.prevFg[ci] || this.cellBg[ci] !== this.prevBg[ci])
@@ -428,7 +444,7 @@ export class CellRenderer {
           out += this.sgrFor(this.cellFg[ci], this.cellBg[ci], activeFg, activeBg);
           activeFg = this.cellFg[ci];
           activeBg = this.cellBg[ci];
-          out += this.glyph;
+          out += this.emojiGlyphs !== null ? this.emojiGlyphs[this.cellBg[ci]] : this.glyph;
           changedCells++;
           cx++;
           ci++;

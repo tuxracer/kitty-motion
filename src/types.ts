@@ -10,8 +10,8 @@ export type ColorDepth = 0 | 16 | 256;
 /** Cell-mode downsampling strategy: "box" averages each cell's source region in linear light, "nearest" copies the region's center pixel */
 export type CellSampling = 'box' | 'nearest';
 
-/** Which rendering path Screen uses: "kitty" (graphics protocol), "half-block" (2 pixels per cell via U+2580), or "cell-background" (1 pixel per cell via background-colored spaces) */
-export type RenderMode = 'kitty' | 'half-block' | 'cell-background';
+/** Which rendering path Screen uses: "kitty" (graphics protocol), "half-block" (2 pixels per cell via U+2580), "cell-background" (1 pixel per cell via background-colored spaces), or "emoji" (one emoji square per cell by nearest color) */
+export type RenderMode = 'kitty' | 'half-block' | 'cell-background' | 'emoji';
 
 /** Render modes handled by CellRenderer (every RenderMode except "kitty") */
 export type CellRenderMode = Exclude<RenderMode, 'kitty'>;
