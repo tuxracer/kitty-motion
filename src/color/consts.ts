@@ -114,7 +114,7 @@ export const ANSI16_PALETTE: ReadonlyArray<readonly [number, number, number]> = 
 /** Render palette for emoji mode: nine emoji squares and their RGB values */
 /* eslint-disable @typescript-eslint/no-magic-numbers */
 export const EMOJI_COLORS: readonly EmojiColor[] = [
-  { emoji: '⬜', rgb: [255, 255, 255] },
+  { emoji: '⬜️', rgb: [255, 255, 255] },
   { emoji: '🟨', rgb: [250, 220, 80] },
   { emoji: '🟧', rgb: [240, 140, 20] },
   { emoji: '🟥', rgb: [220, 40, 40] },
@@ -122,7 +122,7 @@ export const EMOJI_COLORS: readonly EmojiColor[] = [
   { emoji: '🟩', rgb: [50, 160, 30] },
   { emoji: '🟦', rgb: [50, 120, 220] },
   { emoji: '🟪', rgb: [160, 70, 200] },
-  { emoji: '⬛', rgb: [0, 0, 0] },
+  { emoji: '⬛️', rgb: [0, 0, 0] },
 ];
 /* eslint-enable @typescript-eslint/no-magic-numbers */
 
