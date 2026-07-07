@@ -51,4 +51,5 @@ export const MODE_CYCLE: readonly ModeCycleEntry[] = [
   { label: "cell-background truecolor", renderMode: "cell-background", limitColors: 0 },
   { label: "cell-background 256", renderMode: "cell-background", limitColors: 256 },
   { label: "cell-background 16", renderMode: "cell-background", limitColors: 16 },
+  { label: "emoji", renderMode: "emoji", limitColors: 0 },
 ];

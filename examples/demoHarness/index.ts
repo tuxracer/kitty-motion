@@ -48,9 +48,10 @@ const envFlagEnabled = (value: string): boolean => value !== "0" && value !== "f
 export const runDemo = async (demo: Demo): Promise<void> => {
   // DEMO_RENDER_MODE forces a renderer, using the library renderMode values.
   // "kitty" forces the graphics protocol, "half-block" (or the legacy alias
-  // "cell") forces the block-glyph renderer at 2 pixels per cell, and
-  // "cell-background" forces it at 1 pixel per cell. Unset follows the graphics
-  // probe. Other values are ignored
+  // "cell") forces the block-glyph renderer at 2 pixels per cell,
+  // "cell-background" forces it at 1 pixel per cell, and "emoji" forces the
+  // emoji-square renderer. Unset follows the graphics probe. Other values are
+  // ignored
   const renderModeEnv = process.env["DEMO_RENDER_MODE"];
   const initialRenderMode: RenderMode | undefined =
     renderModeEnv === "kitty"
@@ -59,7 +60,9 @@ export const runDemo = async (demo: Demo): Promise<void> => {
         ? "half-block"
         : renderModeEnv === "cell-background"
           ? "cell-background"
-          : undefined;
+          : renderModeEnv === "emoji"
+            ? "emoji"
+            : undefined;
   const renderModeOverride: { renderMode?: RenderMode } =
     initialRenderMode !== undefined ? { renderMode: initialRenderMode } : {};
 
@@ -246,9 +249,10 @@ export const runDemo = async (demo: Demo): Promise<void> => {
   let modeIndex = initialModeIndex === -1 ? 0 : initialModeIndex;
   // Auto-detected cell depth occupies the truecolor slot but keeps a
   // distinct label until the first cycle pins an explicit depth
+  const resolvedMode = screen.getRenderMode();
   let modeLabel =
-    screen.getRenderMode() !== "kitty" && limitColorsOverride.limitColors === undefined
-      ? `${screen.getRenderMode()} (auto)`
+    resolvedMode !== "kitty" && resolvedMode !== "emoji" && limitColorsOverride.limitColors === undefined
+      ? `${resolvedMode} (auto)`
       : modeCycle[modeIndex].label;
 
   let effectIndex = 0;
