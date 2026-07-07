@@ -20,7 +20,7 @@ export interface ScreenUpdatableOptions extends EffectOptions {
   dirtyRects?: boolean;
   /** File-based transmission (t=t): undefined follows detectKittyFileTransferSupport(), true/false forces (default: undefined) */
   fileTransfer?: boolean;
-  /** Renderer selection. undefined follows the cached graphics probe (getKittyGraphicsSupported() === false auto-detects the cell mode from TERM_PROGRAM, true or null selects kitty). "kitty" forces the graphics protocol; "half-block" and "cell-background" force the block-glyph renderer (2 pixels per cell via U+2580, or 1 pixel per cell via background-colored spaces) (default: undefined) */
+  /** Renderer selection. undefined follows the cached graphics probe (getKittyGraphicsSupported() === false auto-detects the cell mode from TERM_PROGRAM, true or null selects kitty). "kitty" forces the graphics protocol. "half-block" and "cell-background" force the block-glyph renderer (2 pixels per cell via U+2580, or 1 pixel per cell via background-colored spaces) (default: undefined) */
   renderMode?: RenderMode;
   /** Cell-mode SGR color depth: 0 = truecolor, 256, or 16; undefined auto-detects from COLORTERM/TERM (default: undefined) */
   limitColors?: ColorDepth;

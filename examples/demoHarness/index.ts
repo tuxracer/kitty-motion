@@ -154,7 +154,7 @@ export const runDemo = async (demo: Demo): Promise<void> => {
   // mode, or undefined so the graphics probe chooses kitty vs the cell fallback
   const initialRenderMode: RenderMode | undefined = forcedKitty
     ? "kitty"
-    : (forcedCellMode ?? pinnedCellMode);
+    : (forcedCellMode ?? (graphicsSupported ? undefined : pinnedCellMode));
   const renderModeOverride: { renderMode?: RenderMode } =
     initialRenderMode !== undefined ? { renderMode: initialRenderMode } : {};
 
