@@ -13,7 +13,6 @@ import { clamp } from '../helpers/index.ts';
 import { computeDisplayLayout } from '../displayLayout/index.ts';
 import {
   detectCellRenderMode,
-  detectCellSampling,
   detectColorDepth,
   COLOR_DEPTH_16,
   COLOR_DEPTH_256,
@@ -30,6 +29,7 @@ import {
   BACKGROUND_GLYPH,
   BACKGROUND_CELL_PIXELS_Y,
   EMOJI_COLUMNS_PER_CELL,
+  DEFAULT_CELL_SAMPLING,
   SAMPLE_CENTER_OFFSET,
   SGR_RESET,
   NO_ACTIVE_COLOR,
@@ -139,7 +139,7 @@ export class CellRenderer {
     this.glyph = this.renderMode === 'half-block' ? HALF_BLOCK_GLYPH : BACKGROUND_GLYPH;
     this.columnsPerCell = this.renderMode === 'emoji' ? EMOJI_COLUMNS_PER_CELL : 1;
     this.emojiGlyphs = this.renderMode === 'emoji' ? EMOJI_GLYPHS : null;
-    this.cellSampling = options.cellSampling ?? detectCellSampling();
+    this.cellSampling = options.cellSampling ?? DEFAULT_CELL_SAMPLING;
     const linearLUTs = getLinearLightLUTs();
     this.toLinear = linearLUTs.toLinear;
     this.toSrgb = linearLUTs.toSrgb;

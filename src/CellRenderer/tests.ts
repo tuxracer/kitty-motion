@@ -520,6 +520,7 @@ describe('CellRenderer background glyph mode', () => {
       sourceHeight: 2,
       limitColors: 0,
       renderMode: 'cell-background',
+      cellSampling: 'box',
       layout: { cols: 2, rows: 1, offsetCol: 1, offsetRow: 1 },
     });
     const payload = renderer.renderRgb24(
@@ -716,28 +717,27 @@ describe('CellRenderer nearest sampling', () => {
     expect(payload).toBe(`${CSI}2;2H${CSI}48;2;200;100;50m ${RESET}`);
   });
 
-  it('auto-detects nearest sampling from TERM_PROGRAM=Apple_Terminal', () => {
-    withTermProgram('Apple_Terminal', () => {
-      // No renderMode or cellSampling options: both auto-detect, so the
-      // payload must be the background-mode nearest result (bottom pixels,
-      // no blend colors)
-      const renderer = new CellRenderer({
-        sourceWidth: 2,
-        sourceHeight: 2,
-        limitColors: 0,
-        layout: { cols: 2, rows: 1, offsetCol: 1, offsetRow: 1 },
-      });
-      const payload = renderer.renderRgb24(
-        frameOf(
-          [
-            [255, 0, 0], [0, 255, 0],
-            [0, 0, 255], [255, 255, 255],
-          ],
-          2,
-        ),
-      );
-      expect(payload).toBe(`${CSI}1;1H${CSI}48;2;0;0;255m ${CSI}48;2;255;255;255m ${RESET}`);
+  it('uses nearest sampling by default when cellSampling is unspecified', () => {
+    // No cellSampling option, so the default (nearest) applies. A 2x2 source
+    // into a 2x1 background grid copies each column's bottom pixel instead of
+    // box-blending the two rows
+    const renderer = new CellRenderer({
+      sourceWidth: 2,
+      sourceHeight: 2,
+      limitColors: 0,
+      renderMode: 'cell-background',
+      layout: { cols: 2, rows: 1, offsetCol: 1, offsetRow: 1 },
     });
+    const payload = renderer.renderRgb24(
+      frameOf(
+        [
+          [255, 0, 0], [0, 255, 0],
+          [0, 0, 255], [255, 255, 255],
+        ],
+        2,
+      ),
+    );
+    expect(payload).toBe(`${CSI}1;1H${CSI}48;2;0;0;255m ${CSI}48;2;255;255;255m ${RESET}`);
   });
 });
 

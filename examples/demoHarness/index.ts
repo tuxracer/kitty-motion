@@ -19,7 +19,6 @@ import {
   detectKittyAnimationSupport,
   detectKittyFileTransferSupport,
   detectCellPixelSize,
-  detectCellSampling,
   isSSHSession,
   isMultiplexedSession,
   type CellSampling,
@@ -211,7 +210,7 @@ export const runDemo = async (demo: Demo): Promise<void> => {
   const cellSamplingStatus =
     cellSamplingOverride.cellSampling !== undefined
       ? `forced ${cellSamplingOverride.cellSampling} (DEMO_CELL_SAMPLING=${cellSamplingEnv})`
-      : `${detectCellSampling()} (auto-detected from TERM_PROGRAM)`;
+      : `nearest (default)`;
   const { cols, rows } = screen.getDisplaySize();
 
   const renderModeForced = initialRenderMode !== undefined;

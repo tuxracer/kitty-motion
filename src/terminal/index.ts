@@ -1,5 +1,5 @@
 import { probeTerminal } from '../helpers/index.ts';
-import type { CellRenderMode, CellSampling, ColorDepth } from '../types.ts';
+import type { CellRenderMode, ColorDepth } from '../types.ts';
 import type { SessionEnv, CellPixelSize } from './types.ts';
 import {
   DEFAULT_TERMINAL_WIDTH,
@@ -164,12 +164,3 @@ export const detectColorDepth = (env: SessionEnv = process.env): ColorDepth => {
  */
 export const detectCellRenderMode = (env: SessionEnv = process.env): CellRenderMode =>
   env['TERM_PROGRAM'] === TERM_PROGRAM_APPLE_TERMINAL ? 'cell-background' : 'half-block';
-
-/**
- * Detect the cell downsampling strategy for the terminal. Terminal.app runs
- * in background glyph mode at one pixel per cell, where box-filtered edge
- * blends turn into chunky fringes, so it gets nearest sampling and keeps
- * hard-edged content solid. Everywhere else box averaging looks smoother.
- */
-export const detectCellSampling = (env: SessionEnv = process.env): CellSampling =>
-  env['TERM_PROGRAM'] === TERM_PROGRAM_APPLE_TERMINAL ? 'nearest' : 'box';

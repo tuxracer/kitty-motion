@@ -16,7 +16,7 @@ Data flow: `Screen` (public API, constructed via the async `createScreen()`, whi
 On terminals without Kitty graphics support (probed by
 `detectKittyGraphicsSupport()`), `Screen` instead drives `CellRenderer`,
 which renders frames as colored Unicode block glyphs with cell-level diffing
-and no worker thread. On macOS Terminal.app (probed by `detectCellRenderMode()` and `detectCellSampling()` from `TERM_PROGRAM`), cells render as background-colored spaces at 1 pixel per cell with nearest sampling instead of box-averaged half blocks, because Terminal.app draws block glyphs from the font and no font tiles the cell exactly. An opt-in `emoji` render mode draws each cell as the nearest of nine emoji squares at one double-wide cell per pixel, carrying color in the glyph instead of SGR.
+and no worker thread. On macOS Terminal.app (probed by `detectCellRenderMode()` from `TERM_PROGRAM`), cells render as background-colored spaces at 1 pixel per cell instead of half blocks, because Terminal.app draws block glyphs from the font and no font tiles the cell exactly. Cell downsampling defaults to nearest sampling (which keeps hard-edged content solid), with box averaging available through the `cellSampling` option. An opt-in `emoji` render mode draws each cell as the nearest of nine emoji squares at one double-wide cell per pixel, carrying color in the glyph instead of SGR.
 
 After the initial frames, `KittyRenderer` sends only the changed bounding
 rectangle as an animation-protocol frame edit (`a=f`) when the terminal

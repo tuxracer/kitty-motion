@@ -69,7 +69,6 @@ export {
   isMultiplexedSession,
   detectColorDepth,
   detectCellRenderMode,
-  detectCellSampling,
 } from './terminal/index.ts';
 export type { CellPixelSize, SessionEnv } from './terminal/index.ts';
 export { fitToTerminal } from './fitToTerminal/index.ts';

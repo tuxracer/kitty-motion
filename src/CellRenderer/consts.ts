@@ -1,3 +1,5 @@
+import type { CellSampling } from '../types.ts';
+
 /**
  * The upper half block: the foreground color paints the cell's top pixel,
  * the background color its bottom pixel, giving 1x2 pixels per cell with
@@ -112,3 +114,6 @@ export const SAMPLE_CENTER_OFFSET = 0.5;
 
 /** Terminal columns one emoji glyph occupies (emoji squares render double-wide) */
 export const EMOJI_COLUMNS_PER_CELL = 2;
+
+/** Cell downsampling strategy used when the cellSampling option is not set */
+export const DEFAULT_CELL_SAMPLING: CellSampling = 'nearest';

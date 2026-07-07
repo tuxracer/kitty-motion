@@ -126,7 +126,6 @@ For building a custom pipeline instead of using `Screen`:
 - `detectColorDepth`, `ColorDepth`: environment-based SGR color depth detection
 - `detectCellRenderMode`, `CellRenderMode`: environment-based cell render-mode detection (Terminal.app gets `cell-background` because its font-drawn block glyphs do not tile the cell)
 - `rgbToEmoji`, `buildEmojiLUT`, `EMOJI_COLORS`, `EmojiColor`: the fixed nine-color emoji palette and its nearest-color quantizer, used by the opt-in `emoji` render mode
-- `detectCellSampling`, `CellSampling`: environment-based cell downsampling strategy detection (Terminal.app gets nearest sampling so hard edges stay solid at one pixel per cell)
 - `computeDisplayLayout`, `DisplayLayout`, `DisplayLayoutOptions`: centered, aspect-correct cell-grid placement (shared by both renderers)
 - `rgbToAnsi256`, `rgbToAnsi16`, `convertFrameToRgb24`, `FrameToRgb24Options`, `buildGammaLUT`, `frameUnitsPerPixel`, `allocateFrameBuffer`, `allocateFrameBufferLike`, `isRgb15Buffer`: color quantization, gamma tables, framebuffer conversion, and framebuffer allocation primitives
 - `FrameBuffer`, `ColorSpace`, `Renderer`, `RenderMode`: shared framebuffer types and the renderer contract both renderers implement

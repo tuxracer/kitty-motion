@@ -5,7 +5,6 @@ import {
   isMultiplexedSession,
   detectColorDepth,
   detectCellRenderMode,
-  detectCellSampling,
 } from './index.ts';
 
 const grid = { cols: 80, rows: 24 };
@@ -104,19 +103,5 @@ describe('detectCellRenderMode', () => {
 
   it('selects half-block mode when TERM_PROGRAM is unset', () => {
     expect(detectCellRenderMode({})).toBe('half-block');
-  });
-});
-
-describe('detectCellSampling', () => {
-  it('selects nearest sampling for Terminal.app', () => {
-    expect(detectCellSampling({ TERM_PROGRAM: 'Apple_Terminal' })).toBe('nearest');
-  });
-
-  it('selects box sampling for other terminals', () => {
-    expect(detectCellSampling({ TERM_PROGRAM: 'ghostty' })).toBe('box');
-  });
-
-  it('selects box sampling when TERM_PROGRAM is unset', () => {
-    expect(detectCellSampling({})).toBe('box');
   });
 });
