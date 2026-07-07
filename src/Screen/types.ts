@@ -24,7 +24,7 @@ export interface ScreenUpdatableOptions extends EffectOptions {
   renderMode?: RenderMode;
   /** Cell-mode SGR color depth: 0 = truecolor, 256, or 16; undefined auto-detects from COLORTERM/TERM (default: undefined) */
   limitColors?: ColorDepth;
-  /** Cell-mode downsampling strategy. "box" averages each cell's source region in linear light (smooth), "nearest" copies the region's center pixel so hard-edged content stays solid. undefined auto-detects from TERM_PROGRAM (default: undefined) */
+  /** Cell-mode downsampling strategy. "box" averages each cell's source region in linear light (smooth), "nearest" copies the region's center pixel so hard-edged content stays solid. In ascii mode "nearest" caps the samples per cell so cost stays flat as source resolution grows, while "box" averages the full footprint (the two match on small sources). undefined defaults to "nearest" (default: undefined) */
   cellSampling?: CellSampling;
 }
 

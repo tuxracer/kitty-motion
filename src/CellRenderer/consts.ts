@@ -1,4 +1,5 @@
 import type { CellSampling } from '../types.ts';
+import { SHAPE_REGION_COLS, SHAPE_REGION_ROWS } from '../asciiShapes/index.ts';
 
 /**
  * The upper half block: the foreground color paints the cell's top pixel,
@@ -117,3 +118,19 @@ export const EMOJI_COLUMNS_PER_CELL = 2;
 
 /** Cell downsampling strategy used when the cellSampling option is not set */
 export const DEFAULT_CELL_SAMPLING: CellSampling = 'nearest';
+
+/**
+ * Taps per region axis when ascii mode samples a cell under "nearest"
+ * (the default) cellSampling. Bounding the taps makes ascii shape sampling
+ * O(cells) instead of O(source pixels), so its cost stays flat as the source
+ * resolution grows. When a cell footprint is smaller than the resulting caps
+ * the whole footprint is read, so small sources are sampled exactly (identical
+ * to "box"). Under "box" ascii always averages the full footprint.
+ */
+export const ASCII_SAMPLE_TAPS_PER_REGION_AXIS = 2;
+
+/** Max sampled columns per cell in nearest-mode ascii (region columns x taps) */
+export const ASCII_SAMPLE_MAX_COLS = ASCII_SAMPLE_TAPS_PER_REGION_AXIS * SHAPE_REGION_COLS;
+
+/** Max sampled rows per cell in nearest-mode ascii (region rows x taps) */
+export const ASCII_SAMPLE_MAX_ROWS = ASCII_SAMPLE_TAPS_PER_REGION_AXIS * SHAPE_REGION_ROWS;

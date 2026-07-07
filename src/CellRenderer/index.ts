@@ -41,6 +41,8 @@ import {
   BACKGROUND_CELL_PIXELS_Y,
   EMOJI_COLUMNS_PER_CELL,
   DEFAULT_CELL_SAMPLING,
+  ASCII_SAMPLE_MAX_COLS,
+  ASCII_SAMPLE_MAX_ROWS,
   SAMPLE_CENTER_OFFSET,
   SGR_RESET,
   NO_ACTIVE_COLOR,
@@ -451,7 +453,15 @@ export class CellRenderer {
   // col = min(COLS-1, floor((lx+0.5)/cellW * COLS)) and
   // row = min(ROWS-1, floor((ly+0.5)/cellH * ROWS)), with no brightness
   // inversion. The fg color is a gamma-correct (linear-light) average of the
-  // cell's source pixels.
+  // sampled pixels.
+  //
+  // Sampling honors cellSampling. "box" reads every footprint pixel (the mean
+  // is exact but the cost is O(source pixels)). "nearest" (the default) strides
+  // over the footprint so at most ASCII_SAMPLE_MAX_COLS x ASCII_SAMPLE_MAX_ROWS
+  // pixels are read per cell, making the cost O(cells) regardless of source
+  // resolution. Both stride into the same region-binning formula, and a
+  // footprint smaller than the caps yields stride 1 (so small sources sample
+  // every pixel and match "box" exactly).
   private mapCellsAscii(bounds: CellBounds): void {
     const lookup = this.asciiLookup;
     if (lookup === null) {
@@ -461,6 +471,7 @@ export class CellRenderer {
     const sw = this.sourceWidth;
     const toLinear = this.toLinear;
     const toSrgb = this.toSrgb;
+    const boxSampling = this.cellSampling === 'box';
     // Scratch accumulators reused across every cell (never allocated per cell)
     const lumSum = new Array<number>(SHAPE_VECTOR_DIMS).fill(0);
     const lumCount = new Array<number>(SHAPE_VECTOR_DIMS).fill(0);
@@ -469,10 +480,12 @@ export class CellRenderer {
       const sy0 = Math.floor((cy * this.sourceHeight) / this.rows);
       const sy1 = Math.max(sy0 + 1, Math.floor(((cy + 1) * this.sourceHeight) / this.rows));
       const cellH = sy1 - sy0;
+      const strideY = boxSampling ? 1 : Math.max(1, Math.ceil(cellH / ASCII_SAMPLE_MAX_ROWS));
       for (let cx = bounds.cellX0; cx < bounds.cellX1; cx++) {
         const sx0 = Math.floor((cx * sw) / this.cols);
         const sx1 = Math.max(sx0 + 1, Math.floor(((cx + 1) * sw) / this.cols));
         const cellW = sx1 - sx0;
+        const strideX = boxSampling ? 1 : Math.max(1, Math.ceil(cellW / ASCII_SAMPLE_MAX_COLS));
         for (let k = 0; k < SHAPE_VECTOR_DIMS; k++) {
           lumSum[k] = 0;
           lumCount[k] = 0;
@@ -481,14 +494,14 @@ export class CellRenderer {
         let gLinSum = 0;
         let bLinSum = 0;
         let pxCount = 0;
-        for (let sy = sy0; sy < sy1; sy++) {
+        for (let sy = sy0; sy < sy1; sy += strideY) {
           const ly = sy - sy0;
           const row = Math.min(
             SHAPE_REGION_ROWS - 1,
             Math.floor(((ly + SAMPLE_CENTER_OFFSET) / cellH) * SHAPE_REGION_ROWS),
           );
           const rowBase = sy * sw;
-          for (let sx = sx0; sx < sx1; sx++) {
+          for (let sx = sx0; sx < sx1; sx += strideX) {
             const si = (rowBase + sx) * RGB24_BYTES_PER_PIXEL;
             const r = src[si];
             const g = src[si + 1];

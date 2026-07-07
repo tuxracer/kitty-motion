@@ -865,4 +865,38 @@ describe('CellRenderer ascii mode', () => {
       expect(ASCII_CHARS).toContain(ch);
     }
   });
+
+  it('samples identically to box mode when the footprint fits the sample caps', () => {
+    // 16x24 over an 8x8 grid is a 2x3 footprint per cell, under the sample
+    // caps, so nearest reads every pixel and must match box byte for byte.
+    const nearest = new CellRenderer({ ...asciiOptions, cellSampling: 'nearest' });
+    const box = new CellRenderer({ ...asciiOptions, cellSampling: 'box' });
+    const frame = buildFrame((x, y) => [(x * 16) % 256, (y * 10) % 256, 128]);
+    expect(nearest.renderRgb24(frame)).toBe(box.renderRgb24(frame));
+  });
+
+  it('preserves vertical shape discrimination on large footprints', () => {
+    // A 200x120 source over a 20x8 grid gives a 10x15 footprint per cell, well
+    // past the sample caps, so nearest subsamples. Bright in each cell's top
+    // third vs its bottom third must still resolve to different glyphs.
+    const W = 200;
+    const H = 120;
+    const layout = { cols: 20, rows: 8, offsetCol: 1, offsetRow: 1 };
+    const cellH = H / layout.rows;
+    const build = (topBright: boolean): Uint8Array => {
+      const frame = new Uint8Array(W * H * 3);
+      for (let y = 0; y < H; y++) {
+        const inCell = y % cellH;
+        const bright = topBright ? inCell < cellH / 3 : inCell >= (2 * cellH) / 3;
+        const v = bright ? 255 : 0;
+        for (let x = 0; x < W; x++) {
+          frame.set([v, v, v], (y * W + x) * 3);
+        }
+      }
+      return frame;
+    };
+    const top = new CellRenderer({ renderMode: 'ascii', sourceWidth: W, sourceHeight: H, limitColors: 0, layout });
+    const bottom = new CellRenderer({ renderMode: 'ascii', sourceWidth: W, sourceHeight: H, limitColors: 0, layout });
+    expect(glyphsOf(top.renderRgb24(build(true)))).not.toBe(glyphsOf(bottom.renderRgb24(build(false))));
+  });
 });
