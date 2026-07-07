@@ -40,6 +40,17 @@ export {
   allocateFrameBufferLike,
 } from './color/index.ts';
 export type { FrameToRgb24Options, EmojiColor } from './color/index.ts';
+export {
+  ASCII_SHAPES,
+  ASCII_CHARS,
+  nearestAsciiChar,
+  createAsciiLookup,
+  enhanceAsciiContrast,
+  SHAPE_REGION_COLS,
+  SHAPE_REGION_ROWS,
+  SHAPE_VECTOR_DIMS,
+} from './asciiShapes/index.ts';
+export type { AsciiShape, AsciiLookup } from './asciiShapes/index.ts';
 
 // Kitty graphics protocol and output
 export {

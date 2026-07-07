@@ -85,7 +85,7 @@ selects the kitty renderer.
 | `enableDiffRendering` | `boolean` | `true` | Skip re-encoding frames that are pixel-identical to the previous frame |
 | `dirtyRects` | `boolean` | `undefined` | `undefined` follows `detectKittyAnimationSupport()`, `true` enables delta frames on terminals the probe rejected or never checked, and `false` disables them. Deltas still require `enableDiffRendering` and an integer `scale` of 1 or more |
 | `fileTransfer` | `boolean` | `undefined` | Deliver frames as temp files instead of base64 escape payloads. `undefined` follows `detectKittyFileTransferSupport()`, and `true`/`false` overrides the probe |
-| `renderMode` | `"kitty" \| "half-block" \| "cell-background" \| "emoji"` | `undefined` | Renderer selection. `undefined` follows the cached graphics probe (`getKittyGraphicsSupported() === false` auto-detects the cell mode from `TERM_PROGRAM`, `true` or `null` selects kitty). `"kitty"` forces the graphics protocol, `"half-block"` and `"cell-background"` force the block-glyph fallback, and `"emoji"` (opt-in only) renders one emoji square per cell by nearest color |
+| `renderMode` | `"kitty" \| "half-block" \| "cell-background" \| "emoji" \| "ascii"` | `undefined` | Renderer selection. `undefined` follows the cached graphics probe (`getKittyGraphicsSupported() === false` auto-detects the cell mode from `TERM_PROGRAM`, `true` or `null` selects kitty). `"kitty"` forces the graphics protocol, `"half-block"` and `"cell-background"` force the block-glyph fallback, and `"emoji"` (opt-in only) renders one emoji square per cell by nearest color, and `"ascii"` (opt-in only) renders one printable ASCII character per cell by nearest shape |
 | `limitColors` | `0 \| 16 \| 256` | `undefined` | Cell mode only. SGR color depth. When `undefined`, a `COLORTERM` of `truecolor`/`24bit` selects truecolor (`0`), a `TERM` containing `256color` selects 256, and anything else selects 16 |
 | `workerFactory` | `WorkerFactory` | real worker | Override worker creation (tests, embedding) |
 | `onDebug` | `(message: string) => void` | (none) | Optional sink for internal diagnostic messages |
@@ -101,7 +101,7 @@ selects the kitty renderer.
 | `updateOptions(partial: Partial<ScreenUpdatableOptions>)` | Apply new option values at runtime. Resets diff state, so the next frame renders in full |
 | `getDisplaySize(): { cols: number; rows: number }` | Current on-screen size in terminal cells |
 | `getStatusRow(): number` | First terminal row below the image, for placing a status line |
-| `getRenderMode(): "kitty" \| "half-block" \| "cell-background" \| "emoji"` | Which rendering path is active, the Kitty graphics protocol, one of the two block-glyph cell modes, or emoji |
+| `getRenderMode(): "kitty" \| "half-block" \| "cell-background" \| "emoji" \| "ascii"` | Which rendering path is active, the Kitty graphics protocol, one of the two block-glyph cell modes, emoji, or ascii |
 | `dispose()` | Clear the image, restore the cursor, and terminate the encode worker. Called automatically on process exit and termination signals unless `autoDispose: false` |
 
 ## Low-level exports
@@ -126,6 +126,7 @@ For building a custom pipeline instead of using `Screen`:
 - `detectColorDepth`, `ColorDepth`: environment-based SGR color depth detection
 - `detectCellRenderMode`, `CellRenderMode`: environment-based cell render-mode detection (Terminal.app gets `cell-background` because its font-drawn block glyphs do not tile the cell)
 - `rgbToEmoji`, `buildEmojiLUT`, `EMOJI_COLORS`, `EmojiColor`: the fixed nine-color emoji palette and its nearest-color quantizer, used by the opt-in `emoji` render mode
+- `ASCII_SHAPES`, `ASCII_CHARS`, `nearestAsciiChar`, `createAsciiLookup`, `enhanceAsciiContrast`, `SHAPE_REGION_COLS`, `SHAPE_REGION_ROWS`, `SHAPE_VECTOR_DIMS`, `AsciiShape`, `AsciiLookup`: the font-generated per-character shape-vector table and the nearest-shape lookup used by the opt-in `ascii` render mode
 - `computeDisplayLayout`, `DisplayLayout`, `DisplayLayoutOptions`: centered, aspect-correct cell-grid placement (shared by both renderers)
 - `rgbToAnsi256`, `rgbToAnsi16`, `convertFrameToRgb24`, `FrameToRgb24Options`, `buildGammaLUT`, `frameUnitsPerPixel`, `allocateFrameBuffer`, `allocateFrameBufferLike`, `isRgb15Buffer`: color quantization, gamma tables, framebuffer conversion, and framebuffer allocation primitives
 - `FrameBuffer`, `ColorSpace`, `Renderer`, `RenderMode`: shared framebuffer types and the renderer contract both renderers implement

@@ -48,9 +48,9 @@ export const runDemo = async (demo: Demo): Promise<void> => {
   // DEMO_RENDER_MODE forces a renderer, using the library renderMode values.
   // "kitty" forces the graphics protocol, "half-block" (or the legacy alias
   // "cell") forces the block-glyph renderer at 2 pixels per cell,
-  // "cell-background" forces it at 1 pixel per cell, and "emoji" forces the
-  // emoji-square renderer. Unset follows the graphics probe. Other values are
-  // ignored
+  // "cell-background" forces it at 1 pixel per cell, "emoji" forces the
+  // emoji-square renderer, and "ascii" forces the shape-matched ASCII
+  // renderer. Unset follows the graphics probe. Other values are ignored
   const renderModeEnv = process.env["DEMO_RENDER_MODE"];
   const initialRenderMode: RenderMode | undefined =
     renderModeEnv === "kitty"
@@ -61,7 +61,9 @@ export const runDemo = async (demo: Demo): Promise<void> => {
           ? "cell-background"
           : renderModeEnv === "emoji"
             ? "emoji"
-            : undefined;
+            : renderModeEnv === "ascii"
+              ? "ascii"
+              : undefined;
   const renderModeOverride: { renderMode?: RenderMode } =
     initialRenderMode !== undefined ? { renderMode: initialRenderMode } : {};
 

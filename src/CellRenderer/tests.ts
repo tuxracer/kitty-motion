@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CellRenderer } from './index.ts';
 import { EMOJI_COLORS } from '../color/index.ts';
+import { ASCII_CHARS } from '../asciiShapes/index.ts';
 
 // Glyph mode auto-detects from TERM_PROGRAM. Pin the environment so the
 // half-block expectations hold regardless of which terminal runs the tests.
@@ -782,5 +783,86 @@ describe('CellRenderer emoji mode', () => {
     );
     // Grid column 1 addresses terminal column offsetCol + 1*2 = 3
     expect(payload).toBe(`${CSI}1;3H${EMOJI_COLORS[3].emoji}${RESET}`);
+  });
+});
+
+describe('CellRenderer ascii mode', () => {
+  // Source and grid chosen so every cell footprint is 2 cols x 3 rows, one
+  // source pixel per shape region (16/8 = 2 wide, 24/8 = 3 tall).
+  const WIDTH = 16;
+  const HEIGHT = 24;
+  const asciiOptions = {
+    sourceWidth: WIDTH,
+    sourceHeight: HEIGHT,
+    renderMode: 'ascii',
+    limitColors: 0,
+    layout: { cols: 8, rows: 8, offsetCol: 1, offsetRow: 1 },
+  } as const;
+
+  // rgb24 frame filled by a per-pixel color function
+  const buildFrame = (color: (x: number, y: number) => [number, number, number]): Uint8Array => {
+    const frame = new Uint8Array(WIDTH * HEIGHT * 3);
+    for (let y = 0; y < HEIGHT; y++) {
+      for (let x = 0; x < WIDTH; x++) {
+        frame.set(color(x, y), (y * WIDTH + x) * 3);
+      }
+    }
+    return frame;
+  };
+
+  // Strip cursor moves and SGR sequences, leaving only the emitted glyphs
+  const glyphsOf = (payload: string): string => payload.replace(/\x1b\[[0-9;]*[Hm]/gu, '');
+
+  it('returns an empty payload for an identical second frame', () => {
+    const renderer = new CellRenderer({ ...asciiOptions });
+    const frame = buildFrame(() => [120, 60, 200]);
+    expect(renderer.renderRgb24(frame).length).toBeGreaterThan(0);
+    expect(renderer.renderRgb24(frame)).toBe('');
+  });
+
+  it('emits a foreground SGR and never a background SGR', () => {
+    const renderer = new CellRenderer({ ...asciiOptions });
+    const frame = buildFrame((_x, y) => (y < HEIGHT / 2 ? [200, 40, 40] : [40, 40, 200]));
+    const payload = renderer.renderRgb24(frame);
+    expect(payload).toContain('\x1b[38;');
+    expect(payload).not.toContain('[48;');
+  });
+
+  it('emits grayscale foregrounds when colorEnabled is false', () => {
+    const renderer = new CellRenderer({ ...asciiOptions, colorEnabled: false });
+    const frame = buildFrame((x, y) => [(x * 16) % 256, (y * 10) % 256, 90]);
+    const payload = renderer.renderRgb24(frame);
+    const matches = [...payload.matchAll(/38;2;(\d+);(\d+);(\d+)/gu)];
+    expect(matches.length).toBeGreaterThan(0);
+    for (const [, r, g, b] of matches) {
+      expect(r).toBe(g);
+      expect(g).toBe(b);
+    }
+  });
+
+  it('produces different glyphs for top-heavy versus bottom-heavy cells', () => {
+    // Each cell footprint is 3 source rows tall (one per shape region row).
+    // Bright in the cell's top row vs its bottom row leaves the same average
+    // color (2 white + 4 black pixels either way), so only the glyph shape
+    // differs between the two payloads.
+    const topHeavy = new CellRenderer({ ...asciiOptions });
+    const bottomHeavy = new CellRenderer({ ...asciiOptions });
+    const white: [number, number, number] = [255, 255, 255];
+    const black: [number, number, number] = [0, 0, 0];
+    const topPayload = topHeavy.renderRgb24(buildFrame((_x, y) => (y % 3 === 0 ? white : black)));
+    const bottomPayload = bottomHeavy.renderRgb24(
+      buildFrame((_x, y) => (y % 3 === 2 ? white : black)),
+    );
+    expect(glyphsOf(topPayload)).not.toBe(glyphsOf(bottomPayload));
+  });
+
+  it('emits only single-width printable ASCII glyphs', () => {
+    const renderer = new CellRenderer({ ...asciiOptions });
+    const frame = buildFrame((x, y) => [(x * 16) % 256, (y * 10) % 256, 128]);
+    const glyphs = glyphsOf(renderer.renderRgb24(frame));
+    expect(glyphs.length).toBeGreaterThan(0);
+    for (const ch of glyphs) {
+      expect(ASCII_CHARS).toContain(ch);
+    }
   });
 });

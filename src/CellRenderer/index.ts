@@ -3,12 +3,23 @@ import {
   buildAnsi16LUT,
   buildAnsi256LUT,
   buildEmojiLUT,
+  calculateLuminance8,
   convertFrameToRgb24,
   EMOJI_GLYPHS,
   frameUnitsPerPixel,
   getLinearLightLUTs,
+  MAX_8BIT,
   paletteLUTIndex,
 } from '../color/index.ts';
+import {
+  ASCII_CHARS,
+  createAsciiLookup,
+  enhanceAsciiContrast,
+  SHAPE_REGION_COLS,
+  SHAPE_REGION_ROWS,
+  SHAPE_VECTOR_DIMS,
+  type AsciiLookup,
+} from '../asciiShapes/index.ts';
 import { clamp } from '../helpers/index.ts';
 import { computeDisplayLayout } from '../displayLayout/index.ts';
 import {
@@ -56,8 +67,12 @@ export * from './types.ts';
  * background color its bottom pixel, giving 1x2 pixels per cell with exact
  * color. In background mode (auto-selected on Terminal.app, whose
  * font-drawn block glyphs do not tile the cell), each cell renders as a
- * space with only a background color, giving 1x1 pixels per cell. Emission
- * is diffed at the cell level: after the first paint only changed cells
+ * space with only a background color, giving 1x1 pixels per cell. In ascii
+ * mode, each cell is sampled into a 6-region luminance vector (2 cols x 3
+ * rows) and drawn as the printable ASCII glyph whose shape best matches,
+ * colorized by the cell's average color via an SGR foreground (no
+ * background). Emission is diffed at the cell level: after the first paint
+ * only changed cells
  * are re-sent, addressed by cursor moves, with redundant SGR color changes
  * elided. Output is plain SGR text, so it renders correctly on any color
  * terminal.
@@ -79,6 +94,10 @@ export class CellRenderer {
   private columnsPerCell: number;
   // Emoji glyphs indexed by palette index in emoji mode, null otherwise
   private emojiGlyphs: readonly string[] | null;
+  // ASCII glyphs indexed by shape index in ascii mode, null otherwise
+  private asciiChars: readonly string[] | null;
+  // Nearest-shape lookup (quantization cache) in ascii mode, null otherwise
+  private asciiLookup: AsciiLookup | null;
   private cellSampling: CellSampling;
   // Linear-light LUT pair for gamma-correct box averaging
   private toLinear: Uint16Array;
@@ -135,10 +154,17 @@ export class CellRenderer {
 
     this.colorDepth = options.limitColors ?? detectColorDepth();
     this.renderMode = options.renderMode ?? detectCellRenderMode();
-    this.pixelsPerCell = this.renderMode === 'half-block' ? CELL_PIXELS_Y : BACKGROUND_CELL_PIXELS_Y;
+    this.pixelsPerCell =
+      this.renderMode === 'half-block'
+        ? CELL_PIXELS_Y
+        : this.renderMode === 'ascii'
+          ? SHAPE_REGION_ROWS
+          : BACKGROUND_CELL_PIXELS_Y;
     this.glyph = this.renderMode === 'half-block' ? HALF_BLOCK_GLYPH : BACKGROUND_GLYPH;
     this.columnsPerCell = this.renderMode === 'emoji' ? EMOJI_COLUMNS_PER_CELL : 1;
     this.emojiGlyphs = this.renderMode === 'emoji' ? EMOJI_GLYPHS : null;
+    this.asciiChars = this.renderMode === 'ascii' ? ASCII_CHARS : null;
+    this.asciiLookup = this.renderMode === 'ascii' ? createAsciiLookup() : null;
     this.cellSampling = options.cellSampling ?? DEFAULT_CELL_SAMPLING;
     const linearLUTs = getLinearLightLUTs();
     this.toLinear = linearLUTs.toLinear;
@@ -254,7 +280,9 @@ export class CellRenderer {
       return '';
     }
     let params = '';
-    if (this.renderMode === 'half-block' && fg !== activeFg) {
+    // Half-block and ascii both carry the cell color in the foreground. (In
+    // ascii mode cellBg holds a glyph index, not a color, so no bg is emitted.)
+    if ((this.renderMode === 'half-block' || this.renderMode === 'ascii') && fg !== activeFg) {
       if (this.colorDepth === COLOR_DEPTH_16) {
         params = SGR_FG_16[fg];
       } else if (this.colorDepth === COLOR_DEPTH_256) {
@@ -269,7 +297,7 @@ export class CellRenderer {
           DECIMAL_BYTES[fg & BYTE_MASK];
       }
     }
-    if (bg !== activeBg) {
+    if (this.renderMode !== 'ascii' && bg !== activeBg) {
       let bgParams: string;
       if (this.colorDepth === COLOR_DEPTH_16) {
         bgParams = SGR_BG_16[bg];
@@ -403,6 +431,109 @@ export class CellRenderer {
     }
   }
 
+  // Fill the cell grid from the native rgb buffer within the given bounds.
+  // Ascii mode samples luminance shape directly from nativeRgbBuffer, so it
+  // bypasses the rgb downsample/targetRgbBuffer path the other modes share.
+  private resample(bounds: CellBounds): void {
+    if (this.renderMode === 'ascii') {
+      this.mapCellsAscii(bounds);
+      return;
+    }
+    this.downsample(bounds);
+    this.mapCells(bounds);
+  }
+
+  // Fill cellBg (glyph index) and cellFg (fg color key) for ascii mode. Each
+  // cell is sampled into a 6-region luminance vector (2 cols x 3 rows) and the
+  // nearest-shape glyph is looked up. The region partition MUST match the
+  // offline generator (scripts/generateAsciiShapes): a source pixel at local
+  // (lx, ly) in a cellW x cellH footprint falls in
+  // col = min(COLS-1, floor((lx+0.5)/cellW * COLS)) and
+  // row = min(ROWS-1, floor((ly+0.5)/cellH * ROWS)), with no brightness
+  // inversion. The fg color is a gamma-correct (linear-light) average of the
+  // cell's source pixels.
+  private mapCellsAscii(bounds: CellBounds): void {
+    const lookup = this.asciiLookup;
+    if (lookup === null) {
+      return;
+    }
+    const src = this.nativeRgbBuffer;
+    const sw = this.sourceWidth;
+    const toLinear = this.toLinear;
+    const toSrgb = this.toSrgb;
+    // Scratch accumulators reused across every cell (never allocated per cell)
+    const lumSum = new Array<number>(SHAPE_VECTOR_DIMS).fill(0);
+    const lumCount = new Array<number>(SHAPE_VECTOR_DIMS).fill(0);
+    const vector = new Array<number>(SHAPE_VECTOR_DIMS).fill(0);
+    for (let cy = bounds.cellY0; cy < bounds.cellY1; cy++) {
+      const sy0 = Math.floor((cy * this.sourceHeight) / this.rows);
+      const sy1 = Math.max(sy0 + 1, Math.floor(((cy + 1) * this.sourceHeight) / this.rows));
+      const cellH = sy1 - sy0;
+      for (let cx = bounds.cellX0; cx < bounds.cellX1; cx++) {
+        const sx0 = Math.floor((cx * sw) / this.cols);
+        const sx1 = Math.max(sx0 + 1, Math.floor(((cx + 1) * sw) / this.cols));
+        const cellW = sx1 - sx0;
+        for (let k = 0; k < SHAPE_VECTOR_DIMS; k++) {
+          lumSum[k] = 0;
+          lumCount[k] = 0;
+        }
+        let rLinSum = 0;
+        let gLinSum = 0;
+        let bLinSum = 0;
+        let pxCount = 0;
+        for (let sy = sy0; sy < sy1; sy++) {
+          const ly = sy - sy0;
+          const row = Math.min(
+            SHAPE_REGION_ROWS - 1,
+            Math.floor(((ly + SAMPLE_CENTER_OFFSET) / cellH) * SHAPE_REGION_ROWS),
+          );
+          const rowBase = sy * sw;
+          for (let sx = sx0; sx < sx1; sx++) {
+            const si = (rowBase + sx) * RGB24_BYTES_PER_PIXEL;
+            const r = src[si];
+            const g = src[si + 1];
+            const b = src[si + 2];
+            const lx = sx - sx0;
+            const col = Math.min(
+              SHAPE_REGION_COLS - 1,
+              Math.floor(((lx + SAMPLE_CENTER_OFFSET) / cellW) * SHAPE_REGION_COLS),
+            );
+            const region = row * SHAPE_REGION_COLS + col;
+            lumSum[region] += calculateLuminance8(r, g, b);
+            lumCount[region] += 1;
+            rLinSum += toLinear[r];
+            gLinSum += toLinear[g];
+            bLinSum += toLinear[b];
+            pxCount += 1;
+          }
+        }
+        for (let k = 0; k < SHAPE_VECTOR_DIMS; k++) {
+          vector[k] = lumCount[k] > 0 ? lumSum[k] / lumCount[k] / MAX_8BIT : 0;
+        }
+        enhanceAsciiContrast(vector);
+        const charIndex = lookup.lookup(vector);
+        const rSrgb = toSrgb[Math.round(rLinSum / pxCount)];
+        const gSrgb = toSrgb[Math.round(gLinSum / pxCount)];
+        const bSrgb = toSrgb[Math.round(bLinSum / pxCount)];
+        const ci = cy * this.cols + cx;
+        this.cellBg[ci] = charIndex;
+        this.cellFg[ci] = this.colorKey(rSrgb, gSrgb, bSrgb);
+      }
+    }
+  }
+
+  // The glyph drawn for a cell: an emoji square (emoji mode), a shape-matched
+  // ASCII char (ascii mode), or the fixed block/space glyph otherwise.
+  private glyphFor(ci: number): string {
+    if (this.emojiGlyphs !== null) {
+      return this.emojiGlyphs[this.cellBg[ci]];
+    }
+    if (this.asciiChars !== null) {
+      return this.asciiChars[this.cellBg[ci]];
+    }
+    return this.glyph;
+  }
+
   private paintFull(): string {
     let out = '';
     let activeFg = NO_ACTIVE_COLOR;
@@ -414,7 +545,7 @@ export class CellRenderer {
         out += this.sgrFor(this.cellFg[ci], this.cellBg[ci], activeFg, activeBg);
         activeFg = this.cellFg[ci];
         activeBg = this.cellBg[ci];
-        out += this.emojiGlyphs !== null ? this.emojiGlyphs[this.cellBg[ci]] : this.glyph;
+        out += this.glyphFor(ci);
       }
     }
     return out + SGR_RESET;
@@ -444,7 +575,7 @@ export class CellRenderer {
           out += this.sgrFor(this.cellFg[ci], this.cellBg[ci], activeFg, activeBg);
           activeFg = this.cellFg[ci];
           activeBg = this.cellBg[ci];
-          out += this.emojiGlyphs !== null ? this.emojiGlyphs[this.cellBg[ci]] : this.glyph;
+          out += this.glyphFor(ci);
           changedCells++;
           cx++;
           ci++;
@@ -520,15 +651,13 @@ export class CellRenderer {
         ? this.cellBoundsFor(dirtyRect)
         : null;
     if (partialBounds === null) {
-      this.downsample(this.fullCellBounds());
-      this.mapCells(this.fullCellBounds());
+      this.resample(this.fullCellBounds());
     } else {
       // After the last commit swap, cellFg/cellBg hold the grid from two
       // frames ago: refresh from prev so untouched cells diff as unchanged
       this.cellFg.set(this.prevFg);
       this.cellBg.set(this.prevBg);
-      this.downsample(partialBounds);
-      this.mapCells(partialBounds);
+      this.resample(partialBounds);
     }
 
     const payload = this.needsFullPaint ? this.paintFull() : this.paintDiff();
