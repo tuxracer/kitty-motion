@@ -26,9 +26,9 @@ await runDemo({
       for (let px = 0; px < WIDTH; px++) {
         const i = (py * WIDTH + px) * 3;
         const inside = (px - x) ** 2 + (py - y) ** 2 <= RADIUS ** 2;
-        frame[i] = inside ? 255 : 20;
-        frame[i + 1] = inside ? 80 : 20;
-        frame[i + 2] = inside ? 80 : 40;
+        frame[i] = inside ? 255 : 0;
+        frame[i + 1] = 0;
+        frame[i + 2] = 0;
       }
     }
     return frame;
