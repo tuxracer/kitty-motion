@@ -7,7 +7,7 @@ import {
   detectKittyGraphicsSupport,
   getKittyGraphicsSupported,
 } from '../kittyProtocol/index.ts';
-import { detectCellPixelSize } from '../terminal/index.ts';
+import { detectCellPixelSize, detectCellRenderMode } from '../terminal/index.ts';
 import type { Renderer, RenderMode } from '../types.ts';
 import { AUTO_DISPOSE_SIGNALS } from './consts.ts';
 import type { ScreenOptions, ScreenUpdatableOptions } from './types.ts';
@@ -109,12 +109,11 @@ export class Screen {
       workerFactory,
       renderMode,
       limitColors,
-      cellGlyphMode,
       cellSampling,
       ...rest
     } = this.options;
     const mode: RenderMode =
-      renderMode ?? (getKittyGraphicsSupported() === false ? 'cell' : 'kitty');
+      renderMode ?? (getKittyGraphicsSupported() === false ? detectCellRenderMode() : 'kitty');
     this.activeRenderMode = mode;
     if (mode === 'kitty') {
       const rendererOptions: KittyRendererOptions = {
@@ -135,10 +134,10 @@ export class Screen {
     if (ignored.length > 0) {
       this.options.onDebug?.(`Cell mode: ignoring kitty-only options ${ignored.join(', ')}`);
     }
-    return new CellRenderer({ ...cellOptions, limitColors, cellGlyphMode, cellSampling });
+    return new CellRenderer({ ...cellOptions, limitColors, renderMode: mode, cellSampling });
   }
 
-  /** Which rendering path is active: "kitty" (graphics protocol) or "cell" (block-glyph fallback) */
+  /** Which rendering path is active: "kitty" (graphics protocol), "half-block", or "cell-background" (block-glyph fallback) */
   getRenderMode(): RenderMode {
     return this.activeRenderMode;
   }

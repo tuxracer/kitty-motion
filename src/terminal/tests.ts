@@ -4,7 +4,7 @@ import {
   isSSHSession,
   isMultiplexedSession,
   detectColorDepth,
-  detectCellGlyphMode,
+  detectCellRenderMode,
   detectCellSampling,
 } from './index.ts';
 
@@ -92,18 +92,18 @@ describe('detectColorDepth', () => {
   });
 });
 
-describe('detectCellGlyphMode', () => {
-  it('selects background mode for Terminal.app', () => {
-    expect(detectCellGlyphMode({ TERM_PROGRAM: 'Apple_Terminal' })).toBe('background');
+describe('detectCellRenderMode', () => {
+  it('selects cell-background mode for Terminal.app', () => {
+    expect(detectCellRenderMode({ TERM_PROGRAM: 'Apple_Terminal' })).toBe('cell-background');
   });
 
   it('selects half-block mode for other terminals', () => {
-    expect(detectCellGlyphMode({ TERM_PROGRAM: 'ghostty' })).toBe('half-block');
-    expect(detectCellGlyphMode({ TERM_PROGRAM: 'iTerm.app' })).toBe('half-block');
+    expect(detectCellRenderMode({ TERM_PROGRAM: 'ghostty' })).toBe('half-block');
+    expect(detectCellRenderMode({ TERM_PROGRAM: 'iTerm.app' })).toBe('half-block');
   });
 
   it('selects half-block mode when TERM_PROGRAM is unset', () => {
-    expect(detectCellGlyphMode({})).toBe('half-block');
+    expect(detectCellRenderMode({})).toBe('half-block');
   });
 });
 

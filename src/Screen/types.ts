@@ -1,7 +1,7 @@
 import type { EffectOptions } from '../postProcessing/index.ts';
 import type { DrainableStream } from '../OutputGate/index.ts';
 import type { WorkerFactory } from '../kittyEncodeWorkerClient/index.ts';
-import type { CellGlyphMode, CellSampling, ColorDepth, ColorSpace, RenderMode } from '../types.ts';
+import type { CellSampling, ColorDepth, ColorSpace, RenderMode } from '../types.ts';
 
 export interface ScreenUpdatableOptions extends EffectOptions {
   /** Internal render scale (0.25-4x); higher values increase PNG quantization fidelity at the cost of CPU (default: `2`) */
@@ -20,12 +20,10 @@ export interface ScreenUpdatableOptions extends EffectOptions {
   dirtyRects?: boolean;
   /** File-based transmission (t=t): undefined follows detectKittyFileTransferSupport(), true/false forces (default: undefined) */
   fileTransfer?: boolean;
-  /** Renderer selection: undefined follows the cached graphics probe (getKittyGraphicsSupported() === false selects cell mode, true or null selects kitty); "kitty"/"cell" forces (default: undefined) */
+  /** Renderer selection. undefined follows the cached graphics probe (getKittyGraphicsSupported() === false auto-detects the cell mode from TERM_PROGRAM, true or null selects kitty). "kitty" forces the graphics protocol; "half-block" and "cell-background" force the block-glyph renderer (2 pixels per cell via U+2580, or 1 pixel per cell via background-colored spaces) (default: undefined) */
   renderMode?: RenderMode;
   /** Cell-mode SGR color depth: 0 = truecolor, 256, or 16; undefined auto-detects from COLORTERM/TERM (default: undefined) */
   limitColors?: ColorDepth;
-  /** Cell-mode glyph strategy. "half-block" packs 2 pixels per cell using U+2580 with fg+bg, "background" packs 1 pixel per cell as a space with bg only (no seams on Terminal.app). undefined auto-detects from TERM_PROGRAM (default: undefined) */
-  cellGlyphMode?: CellGlyphMode;
   /** Cell-mode downsampling strategy. "box" averages each cell's source region in linear light (smooth), "nearest" copies the region's center pixel so hard-edged content stays solid. undefined auto-detects from TERM_PROGRAM (default: undefined) */
   cellSampling?: CellSampling;
 }

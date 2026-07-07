@@ -469,7 +469,7 @@ describe('CellRenderer background glyph mode', () => {
       sourceWidth: 2,
       sourceHeight: 2,
       limitColors: 0,
-      cellGlyphMode: 'background',
+      renderMode: 'cell-background',
       layout: { cols: 2, rows: 2, offsetCol: 1, offsetRow: 1 },
     });
     const frame = frameOf(
@@ -496,7 +496,7 @@ describe('CellRenderer background glyph mode', () => {
       sourceWidth: 2,
       sourceHeight: 2,
       limitColors: 0,
-      cellGlyphMode: 'background',
+      renderMode: 'cell-background',
       layout: { cols: 2, rows: 2, offsetCol: 1, offsetRow: 1 },
     });
     const payload = renderer.renderRgb24(
@@ -518,7 +518,7 @@ describe('CellRenderer background glyph mode', () => {
       sourceWidth: 2,
       sourceHeight: 2,
       limitColors: 0,
-      cellGlyphMode: 'background',
+      renderMode: 'cell-background',
       layout: { cols: 2, rows: 1, offsetCol: 1, offsetRow: 1 },
     });
     const payload = renderer.renderRgb24(
@@ -544,7 +544,7 @@ describe('CellRenderer background glyph mode', () => {
       sourceWidth: 2,
       sourceHeight: 2,
       limitColors: 0,
-      cellGlyphMode: 'background',
+      renderMode: 'cell-background',
       layout: { cols: 2, rows: 2, offsetCol: 1, offsetRow: 1 },
     });
     renderer.renderRgb24(
@@ -573,7 +573,7 @@ describe('CellRenderer background glyph mode', () => {
       sourceWidth: 2,
       sourceHeight: 2,
       limitColors: 16,
-      cellGlyphMode: 'background',
+      renderMode: 'cell-background',
       layout: { cols: 2, rows: 2, offsetCol: 1, offsetRow: 1 },
     });
     const payload = renderer.renderRgb24(
@@ -619,7 +619,7 @@ describe('CellRenderer background glyph mode', () => {
         sourceWidth: 2,
         sourceHeight: 2,
         limitColors: 0,
-        cellGlyphMode: 'half-block',
+        renderMode: 'half-block',
         layout: { cols: 2, rows: 1, offsetCol: 1, offsetRow: 1 },
       });
       const payload = renderer.renderRgb24(
@@ -645,7 +645,7 @@ describe('CellRenderer nearest sampling', () => {
       sourceWidth: 2,
       sourceHeight: 2,
       limitColors: 0,
-      cellGlyphMode: 'background',
+      renderMode: 'cell-background',
       cellSampling: 'nearest',
       layout: { cols: 2, rows: 1, offsetCol: 1, offsetRow: 1 },
     });
@@ -670,7 +670,7 @@ describe('CellRenderer nearest sampling', () => {
       sourceWidth: 4,
       sourceHeight: 4,
       limitColors: 0,
-      cellGlyphMode: 'half-block',
+      renderMode: 'half-block',
       cellSampling: 'nearest',
       layout: { cols: 1, rows: 1, offsetCol: 1, offsetRow: 1 },
     });
@@ -690,7 +690,7 @@ describe('CellRenderer nearest sampling', () => {
       sourceWidth: 2,
       sourceHeight: 2,
       limitColors: 0,
-      cellGlyphMode: 'background',
+      renderMode: 'cell-background',
       cellSampling: 'nearest',
       layout: { cols: 2, rows: 2, offsetCol: 1, offsetRow: 1 },
     });
@@ -717,7 +717,7 @@ describe('CellRenderer nearest sampling', () => {
 
   it('auto-detects nearest sampling from TERM_PROGRAM=Apple_Terminal', () => {
     withTermProgram('Apple_Terminal', () => {
-      // No cellGlyphMode or cellSampling options: both auto-detect, so the
+      // No renderMode or cellSampling options: both auto-detect, so the
       // payload must be the background-mode nearest result (bottom pixels,
       // no blend colors)
       const renderer = new CellRenderer({

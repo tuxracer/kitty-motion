@@ -7,14 +7,14 @@ export type FrameBuffer = Uint8Array | Uint16Array;
 /** SGR color depth for cell-mode output: 0 = truecolor, 256 or 16 = palette */
 export type ColorDepth = 0 | 16 | 256;
 
-/** Cell-mode glyph strategy: "half-block" (2 pixels per cell) or "background" (1 pixel per cell via background-colored spaces) */
-export type CellGlyphMode = 'half-block' | 'background';
-
 /** Cell-mode downsampling strategy: "box" averages each cell's source region in linear light, "nearest" copies the region's center pixel */
 export type CellSampling = 'box' | 'nearest';
 
-/** Which rendering path Screen uses */
-export type RenderMode = 'kitty' | 'cell';
+/** Which rendering path Screen uses: "kitty" (graphics protocol), "half-block" (2 pixels per cell via U+2580), or "cell-background" (1 pixel per cell via background-colored spaces) */
+export type RenderMode = 'kitty' | 'half-block' | 'cell-background';
+
+/** Render modes handled by CellRenderer (every RenderMode except "kitty") */
+export type CellRenderMode = Exclude<RenderMode, 'kitty'>;
 
 /**
  * Renderer surface Screen drives; implemented by KittyRenderer (Kitty

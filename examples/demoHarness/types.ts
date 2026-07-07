@@ -3,7 +3,6 @@ import type {
   FrameBuffer,
   ScreenOptions,
   ScreenUpdatableOptions,
-  RenderMode,
 } from "../../src/index.ts";
 
 /** Utilities the harness hands to a demo's renderFrame callback */
@@ -28,8 +27,8 @@ export interface Demo {
 export interface ModeCycleEntry {
   /** Status bar label, e.g. "cell 256" */
   label: string;
-  /** Renderer this entry selects */
-  renderMode: RenderMode;
+  /** true for the kitty entry; cell entries render in the harness's current cell mode */
+  kitty: boolean;
   /** Cell-mode SGR depth (unused by the kitty entry) */
   limitColors: ColorDepth;
 }

@@ -10,7 +10,7 @@ import {
 import { clamp } from '../helpers/index.ts';
 import { computeDisplayLayout } from '../displayLayout/index.ts';
 import {
-  detectCellGlyphMode,
+  detectCellRenderMode,
   detectCellSampling,
   detectColorDepth,
   COLOR_DEPTH_16,
@@ -19,7 +19,7 @@ import {
 import type { PostProcessingPipeline } from '../postProcessing/index.ts';
 import { clearScreen, hideCursor, moveCursor, showCursor } from '../ansi/index.ts';
 import { computeDirtyRect, isFullFrameRect, type Rect } from '../dirtyRect/index.ts';
-import type { CellGlyphMode, CellSampling, ColorDepth, ColorSpace, FrameBuffer } from '../types.ts';
+import type { CellRenderMode, CellSampling, ColorDepth, ColorSpace, FrameBuffer } from '../types.ts';
 import { RGB24_BYTES_PER_PIXEL } from '../consts.ts';
 import { resolveRendererOptions } from '../rendererOptions/index.ts';
 import {
@@ -68,8 +68,8 @@ export class CellRenderer {
   private reservedRows: number;
   private onDebug?: (message: string) => void;
   private colorDepth: ColorDepth;
-  private cellGlyphMode: CellGlyphMode;
-  // Derived from cellGlyphMode (vertical pixels per cell and the emitted glyph)
+  private renderMode: CellRenderMode;
+  // Derived from renderMode (vertical pixels per cell and the emitted glyph)
   private pixelsPerCell: number;
   private glyph: string;
   private cellSampling: CellSampling;
@@ -127,9 +127,9 @@ export class CellRenderer {
     this.nativeRgbBuffer = common.nativeRgbBuffer;
 
     this.colorDepth = options.limitColors ?? detectColorDepth();
-    this.cellGlyphMode = options.cellGlyphMode ?? detectCellGlyphMode();
-    this.pixelsPerCell = this.cellGlyphMode === 'half-block' ? CELL_PIXELS_Y : BACKGROUND_CELL_PIXELS_Y;
-    this.glyph = this.cellGlyphMode === 'half-block' ? HALF_BLOCK_GLYPH : BACKGROUND_GLYPH;
+    this.renderMode = options.renderMode ?? detectCellRenderMode();
+    this.pixelsPerCell = this.renderMode === 'half-block' ? CELL_PIXELS_Y : BACKGROUND_CELL_PIXELS_Y;
+    this.glyph = this.renderMode === 'half-block' ? HALF_BLOCK_GLYPH : BACKGROUND_GLYPH;
     this.cellSampling = options.cellSampling ?? detectCellSampling();
     const linearLUTs = getLinearLightLUTs();
     this.toLinear = linearLUTs.toLinear;
@@ -146,7 +146,7 @@ export class CellRenderer {
 
     this.allocateGrid();
     this.onDebug?.(
-      `Init: renderMode=cell, colorDepth=${this.colorDepth === 0 ? 'truecolor' : this.colorDepth}, glyphMode=${this.cellGlyphMode}, sampling=${this.cellSampling}, display=${this.cols}x${this.rows}`,
+      `Init: renderMode=${this.renderMode}, colorDepth=${this.colorDepth === 0 ? 'truecolor' : this.colorDepth}, sampling=${this.cellSampling}, display=${this.cols}x${this.rows}`,
     );
   }
 
@@ -238,7 +238,7 @@ export class CellRenderer {
   // once per changed cell.
   private sgrFor(fg: number, bg: number, activeFg: number, activeBg: number): string {
     let params = '';
-    if (this.cellGlyphMode === 'half-block' && fg !== activeFg) {
+    if (this.renderMode === 'half-block' && fg !== activeFg) {
       if (this.colorDepth === COLOR_DEPTH_16) {
         params = SGR_FG_16[fg];
       } else if (this.colorDepth === COLOR_DEPTH_256) {
@@ -374,7 +374,7 @@ export class CellRenderer {
     for (let cy = bounds.cellY0; cy < bounds.cellY1; cy++) {
       for (let cx = bounds.cellX0; cx < bounds.cellX1; cx++) {
         const ci = cy * this.cols + cx;
-        if (this.cellGlyphMode === 'half-block') {
+        if (this.renderMode === 'half-block') {
           const topIdx = (cy * CELL_PIXELS_Y * tw + cx) * RGB24_BYTES_PER_PIXEL;
           const botIdx = ((cy * CELL_PIXELS_Y + 1) * tw + cx) * RGB24_BYTES_PER_PIXEL;
           this.cellFg[ci] = this.colorKey(t[topIdx], t[topIdx + 1], t[topIdx + 2]);

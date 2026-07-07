@@ -239,10 +239,10 @@ describe('Screen cell render mode', () => {
       sourceWidth: 4,
       sourceHeight: 4,
       output: stream,
-      renderMode: 'cell',
+      renderMode: 'half-block',
       workerFactory: NO_WORKER,
     });
-    expect(screen.getRenderMode()).toBe('cell');
+    expect(screen.getRenderMode()).toBe('half-block');
     screen.pushFrame(frame(80));
     const output = stream.chunks.join('');
     expect(output).toContain('\x1b['); // SGR/cursor output
@@ -269,7 +269,7 @@ describe('Screen cell render mode', () => {
       sourceWidth: 4,
       sourceHeight: 4,
       output: stream,
-      renderMode: 'cell',
+      renderMode: 'half-block',
       limitColors: 256,
       workerFactory: NO_WORKER,
     });
@@ -287,7 +287,7 @@ describe('Screen cell render mode', () => {
       sourceWidth: 4,
       sourceHeight: 4,
       output: stream,
-      renderMode: 'cell',
+      renderMode: 'half-block',
       dirtyRects: true,
       pngCompressionLevel: 9,
       workerFactory: NO_WORKER,
@@ -303,7 +303,7 @@ describe('Screen cell render mode', () => {
       sourceWidth: 4,
       sourceHeight: 4,
       output: stream,
-      renderMode: 'cell',
+      renderMode: 'half-block',
       workerFactory: NO_WORKER,
     });
     screen.updateOptions({ renderMode: 'kitty' });
@@ -321,7 +321,7 @@ describe('Screen cell render mode', () => {
       workerFactory: NO_WORKER,
     });
     const beforeSwitch = stream.chunks.length;
-    screen.updateOptions({ renderMode: 'cell' });
+    screen.updateOptions({ renderMode: 'half-block' });
     const switchChunks = stream.chunks.slice(beforeSwitch);
     expect(switchChunks.some((chunk) => chunk.includes('a=d,d=A'))).toBe(true); // Kitty delete sequence
     screen.dispose();
@@ -333,7 +333,7 @@ describe('Screen cell render mode', () => {
       sourceWidth: 4,
       sourceHeight: 4,
       output: stream,
-      renderMode: 'cell',
+      renderMode: 'half-block',
       workerFactory: NO_WORKER,
     });
     const beforeSwitch = stream.chunks.length;
@@ -344,15 +344,14 @@ describe('Screen cell render mode', () => {
     screen.dispose();
   });
 
-  it('passes cellGlyphMode through to the cell renderer', () => {
+  it('renders cell-background mode when renderMode is cell-background', () => {
     const stream = new FakeStream();
     const screen = new Screen({
       sourceWidth: 4,
       sourceHeight: 4,
       output: stream,
-      renderMode: 'cell',
+      renderMode: 'cell-background',
       limitColors: 0,
-      cellGlyphMode: 'background',
     });
     screen.pushFrame(frame(80));
     const out = stream.chunks.join('');
@@ -369,7 +368,7 @@ describe('Screen cell render mode', () => {
       sourceWidth: 4,
       sourceHeight: 4,
       output: stream,
-      renderMode: 'cell',
+      renderMode: 'half-block',
       limitColors: 0,
       cellSampling: 'nearest',
       onDebug: (message) => {
@@ -387,9 +386,9 @@ describe('Screen auto-dispose', () => {
 
   it('shares one set of process hooks across screens and removes them with the last dispose', () => {
     const baseline = disposeListenerCounts();
-    const first = new Screen({ sourceWidth: 4, sourceHeight: 4, output: new FakeStream(), renderMode: 'cell' });
+    const first = new Screen({ sourceWidth: 4, sourceHeight: 4, output: new FakeStream(), renderMode: 'half-block' });
     expect(disposeListenerCounts()).toEqual(baseline.map((n) => n + 1));
-    const second = new Screen({ sourceWidth: 4, sourceHeight: 4, output: new FakeStream(), renderMode: 'cell' });
+    const second = new Screen({ sourceWidth: 4, sourceHeight: 4, output: new FakeStream(), renderMode: 'half-block' });
     expect(disposeListenerCounts()).toEqual(baseline.map((n) => n + 1)); // still shared
     first.dispose();
     expect(disposeListenerCounts()).toEqual(baseline.map((n) => n + 1)); // second is still live
@@ -403,7 +402,7 @@ describe('Screen auto-dispose', () => {
       sourceWidth: 4,
       sourceHeight: 4,
       output: new FakeStream(),
-      renderMode: 'cell',
+      renderMode: 'half-block',
       autoDispose: false,
     });
     expect(disposeListenerCounts()).toEqual(baseline);
@@ -426,7 +425,7 @@ import { Screen } from ${JSON.stringify(modulePath)};
 const screen = new Screen({
   sourceWidth: 4,
   sourceHeight: 4,
-  renderMode: 'cell',
+  renderMode: 'half-block',
   output: { write: (chunk) => { writeSync(1, chunk); return true; }, once: () => {} },
 });
 ${tail}
@@ -518,7 +517,7 @@ describe('createScreen', () => {
     const stream = new FakeStream();
     const screen = await createScreen({ sourceWidth: 4, sourceHeight: 4, output: stream });
     expect(getKittyGraphicsSupported()).toBe(false); // probe ran
-    expect(screen.getRenderMode()).toBe('cell');
+    expect(screen.getRenderMode()).not.toBe('kitty');
     screen.pushFrame(frame(80));
     expect(stream.chunks.join('')).not.toContain('\x1b_G'); // no Kitty APC
     screen.dispose();
@@ -580,7 +579,7 @@ describe('createScreen', () => {
     await detectKittyGraphicsSupport(); // caches false in the test env
     const stream = new FakeStream();
     const screen = await createScreen({ sourceWidth: 4, sourceHeight: 4, output: stream });
-    expect(screen.getRenderMode()).toBe('cell');
+    expect(screen.getRenderMode()).not.toBe('kitty');
     screen.dispose();
   });
 });

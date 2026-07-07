@@ -65,7 +65,7 @@ export {
   isSSHSession,
   isMultiplexedSession,
   detectColorDepth,
-  detectCellGlyphMode,
+  detectCellRenderMode,
   detectCellSampling,
 } from './terminal/index.ts';
 export type { CellPixelSize, SessionEnv } from './terminal/index.ts';

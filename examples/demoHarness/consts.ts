@@ -44,8 +44,8 @@ export const EFFECT_PRESETS: readonly EffectPreset[] = [
 
 /** Display states cycled by the "m" shortcut, in order */
 export const MODE_CYCLE: readonly ModeCycleEntry[] = [
-  { label: "kitty", renderMode: "kitty", limitColors: 0 },
-  { label: "cell truecolor", renderMode: "cell", limitColors: 0 },
-  { label: "cell 256", renderMode: "cell", limitColors: 256 },
-  { label: "cell 16", renderMode: "cell", limitColors: 16 },
+  { label: "kitty", kitty: true, limitColors: 0 },
+  { label: "cell truecolor", kitty: false, limitColors: 0 },
+  { label: "cell 256", kitty: false, limitColors: 256 },
+  { label: "cell 16", kitty: false, limitColors: 16 },
 ];

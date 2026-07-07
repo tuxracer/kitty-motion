@@ -1,5 +1,5 @@
 import { probeTerminal } from '../helpers/index.ts';
-import type { CellGlyphMode, CellSampling, ColorDepth } from '../types.ts';
+import type { CellRenderMode, CellSampling, ColorDepth } from '../types.ts';
 import type { SessionEnv, CellPixelSize } from './types.ts';
 import {
   DEFAULT_TERMINAL_WIDTH,
@@ -155,14 +155,15 @@ export const detectColorDepth = (env: SessionEnv = process.env): ColorDepth => {
 };
 
 /**
- * Detect the cell glyph strategy for the terminal. Terminal.app draws Block
+ * Detect the cell render mode for the terminal. Terminal.app draws Block
  * Elements as font glyphs anchored at the baseline, and no font tiles the
  * cell exactly there (every other mainstream terminal synthesizes these
- * glyphs as cell-filling rectangles), so it gets background mode, rendering
- * one pixel per cell as a background-colored space.
+ * glyphs as cell-filling rectangles), so it gets "cell-background", rendering
+ * one pixel per cell as a background-colored space. Everywhere else gets
+ * "half-block".
  */
-export const detectCellGlyphMode = (env: SessionEnv = process.env): CellGlyphMode =>
-  env['TERM_PROGRAM'] === TERM_PROGRAM_APPLE_TERMINAL ? 'background' : 'half-block';
+export const detectCellRenderMode = (env: SessionEnv = process.env): CellRenderMode =>
+  env['TERM_PROGRAM'] === TERM_PROGRAM_APPLE_TERMINAL ? 'cell-background' : 'half-block';
 
 /**
  * Detect the cell downsampling strategy for the terminal. Terminal.app runs
