@@ -20,4 +20,20 @@ describe('computeDisplayLayout', () => {
     const reserved = computeDisplayLayout({ sourceWidth: 256, sourceHeight: 240, pixelAspectRatio: 1.0, reservedRows: 4 });
     expect(reserved.rows).toBeLessThanOrEqual(base.rows);
   });
+
+  it('keeps a columnsPerCell=2 grid inside the terminal and matches default at 1', () => {
+    const opts = { sourceWidth: 256, sourceHeight: 240, pixelAspectRatio: 1.0, reservedRows: 0 };
+    const base = computeDisplayLayout(opts);
+    const one = computeDisplayLayout({ ...opts, columnsPerCell: 1 });
+    const wide = computeDisplayLayout({ ...opts, columnsPerCell: 2 });
+
+    // columnsPerCell=1 is identical to omitting it
+    expect(one).toEqual(base);
+    // The double-wide grid spans cols*2 columns and must fit an 80-col terminal
+    expect(wide.cols * 2).toBeLessThanOrEqual(80);
+    // Fewer, wider cells than the 1-column layout
+    expect(wide.cols).toBeLessThan(base.cols);
+    expect(wide.offsetCol).toBeGreaterThanOrEqual(1);
+    expect(wide.rows).toBeGreaterThan(0);
+  });
 });

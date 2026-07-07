@@ -7,6 +7,8 @@ export interface DisplayLayoutOptions {
   pixelAspectRatio: number;
   /** Terminal rows excluded from the display area (e.g. a status line) */
   reservedRows: number;
+  /** Terminal columns each cell occupies (1 normally, 2 for double-wide emoji cells) (default: 1) */
+  columnsPerCell?: number;
 }
 
 /** A centered cell-grid placement; offsets are 1-based for ANSI sequences */

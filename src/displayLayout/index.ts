@@ -18,6 +18,7 @@ export const computeDisplayLayout = ({
   sourceHeight,
   pixelAspectRatio,
   reservedRows,
+  columnsPerCell = 1,
 }: DisplayLayoutOptions): DisplayLayout => {
   const { width: termCols, height: termRows } = getTerminalDimensions();
   const availableRows = termRows - reservedRows;
@@ -27,21 +28,25 @@ export const computeDisplayLayout = ({
   const cellWidthPx = measuredCell ? measuredCell.width : CELL_WIDTH_PX;
   const cellHeightPx = measuredCell ? measuredCell.height : CELL_HEIGHT_PX;
 
+  // Each cell occupies columnsPerCell terminal columns, so it is that many
+  // times wider on screen. Widen the aspect cell width to match and cap the
+  // fit to how many such cells fit across the terminal.
+  const availableCellCols = Math.floor(availableCols / columnsPerCell);
   const aspectRatio = kittyGridAspectRatio(
     sourceWidth,
     sourceHeight,
     pixelAspectRatio,
-    cellWidthPx,
+    cellWidthPx * columnsPerCell,
     cellHeightPx,
   );
 
   const { width: cols, height: rows } = fitToTerminal({
-    availableCols,
+    availableCols: availableCellCols,
     availableRows,
     aspectRatio,
   });
 
-  const offsetCol = Math.max(1, Math.floor((termCols - cols) / 2) + 1);
+  const offsetCol = Math.max(1, Math.floor((termCols - cols * columnsPerCell) / 2) + 1);
   const offsetRow = Math.max(1, Math.floor((availableRows - rows) / 2) + 1);
 
   return { cols, rows, offsetCol, offsetRow };
