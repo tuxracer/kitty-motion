@@ -17,13 +17,6 @@ export const SHAPE_REGION_ROWS = 3;
 /** Components in a shape vector (SHAPE_REGION_COLS * SHAPE_REGION_ROWS). */
 export const SHAPE_VECTOR_DIMS = 6;
 
-/**
- * Contrast exponent applied by enhanceAsciiContrast. Values above 1 pull the
- * non-max components toward zero (raising local contrast) while leaving the
- * max component fixed, matching the article's contrast step.
- */
-export const ASCII_CONTRAST_EXPONENT = 1.5;
-
 /** Bits each vector component is quantized to for the lookup cache key. */
 export const ASCII_QUANT_BITS = 5;
 

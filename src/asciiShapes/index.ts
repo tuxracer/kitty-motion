@@ -14,7 +14,6 @@ export * from './types.ts';
 import {
   ASCII_SHAPES,
   SHAPE_VECTOR_DIMS,
-  ASCII_CONTRAST_EXPONENT,
   ASCII_QUANT_BITS,
   ASCII_QUANT_LEVELS,
   ASCII_QUANT_MAX,
@@ -69,8 +68,8 @@ export const nearestAsciiChar = (vector: readonly number[]): number => {
 
 /**
  * In-place contrast step from the article: normalize by the max component,
- * raise each to ASCII_CONTRAST_EXPONENT, then scale back. This leaves the max
- * component unchanged and shrinks the rest, sharpening the shape match.
+ * raise each to the power 1.5, then scale back. This leaves the max component
+ * unchanged and shrinks the rest, sharpening the shape match.
  */
 export const enhanceAsciiContrast = (vector: number[]): void => {
   let max = 0;
@@ -82,8 +81,13 @@ export const enhanceAsciiContrast = (vector: number[]): void => {
   if (max <= 0) {
     return;
   }
+  // t ** 1.5 evaluated as t * Math.sqrt(t). V8 only fast-paths ** for integer
+  // and 0.5 exponents, so a literal ** 1.5 compiles to a full pow() call, while
+  // sqrt is one hardware op. This runs 6 times per cell.
+  const invMax = 1 / max;
   for (let i = 0; i < vector.length; i++) {
-    vector[i] = (vector[i] / max) ** ASCII_CONTRAST_EXPONENT * max;
+    const t = vector[i] * invMax;
+    vector[i] = t * Math.sqrt(t) * max;
   }
 };
 
