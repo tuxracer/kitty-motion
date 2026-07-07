@@ -22,20 +22,41 @@ import {
 import type { AsciiLookup } from './types.ts';
 import { clamp } from '../helpers/index.ts';
 
+// Flat 95x6 shape table for the brute-force scan below. Laying every glyph's 6
+// components out contiguously (row-major) keeps a candidate in one cache line,
+// so the nearest-neighbor search reads sequential memory instead of
+// dereferencing ASCII_SHAPES[i].vector per glyph. Built once from ASCII_SHAPES.
+// The win lands only on cache misses (see createAsciiLookup), so it scales with
+// how much the content varies (video and plasma miss often, static UI rarely).
+const buildShapeTable = (): Float64Array => {
+  const table = new Float64Array(ASCII_SHAPES.length * SHAPE_VECTOR_DIMS);
+  for (let i = 0; i < ASCII_SHAPES.length; i++) {
+    const vector = ASCII_SHAPES[i].vector;
+    for (let d = 0; d < SHAPE_VECTOR_DIMS; d++) {
+      table[i * SHAPE_VECTOR_DIMS + d] = vector[d];
+    }
+  }
+  return table;
+};
+
+const SHAPE_TABLE = buildShapeTable();
+
 /**
  * Index into ASCII_SHAPES of the glyph whose shape vector is nearest to the
  * given 6D sample vector by squared Euclidean distance. Brute force over all
  * ~95 glyphs (a handful of hundred multiplies, sub-millisecond); mirrors
- * rgbToEmoji in src/color.
+ * rgbToEmoji in src/color. Scans the flat SHAPE_TABLE for cache locality.
  */
 export const nearestAsciiChar = (vector: readonly number[]): number => {
+  const table = SHAPE_TABLE;
+  const count = ASCII_SHAPES.length;
   let best = 0;
   let bestDistance = Infinity;
-  for (let i = 0; i < ASCII_SHAPES.length; i++) {
-    const shape = ASCII_SHAPES[i].vector;
+  for (let i = 0; i < count; i++) {
+    const base = i * SHAPE_VECTOR_DIMS;
     let distance = 0;
     for (let d = 0; d < SHAPE_VECTOR_DIMS; d++) {
-      const diff = vector[d] - shape[d];
+      const diff = vector[d] - table[base + d];
       distance += diff * diff;
     }
     if (distance < bestDistance) {
