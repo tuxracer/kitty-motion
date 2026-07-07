@@ -137,7 +137,7 @@ export class Screen {
     return new CellRenderer({ ...cellOptions, limitColors, renderMode: mode, cellSampling });
   }
 
-  /** Which rendering path is active: "kitty" (graphics protocol), "half-block", or "cell-background" (block-glyph fallback) */
+  /** Which rendering path is active: "kitty" (graphics protocol), "half-block", "cell-background" (block-glyph fallback), or "emoji" (emoji squares) */
   getRenderMode(): RenderMode {
     return this.activeRenderMode;
   }

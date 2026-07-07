@@ -39,6 +39,6 @@ export interface FrameToRgb24Options {
 
 /** One entry in the emoji-square render palette: an emoji glyph and its RGB */
 export interface EmojiColor {
-  emoji: string;
-  rgb: [number, number, number];
+  readonly emoji: string;
+  readonly rgb: readonly [number, number, number];
 }
