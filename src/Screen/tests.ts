@@ -12,6 +12,7 @@ import {
   resetKittyGraphicsDetection,
 } from '../kittyProtocol/index.ts';
 import { resetCellPixelSizeDetection } from '../terminal/index.ts';
+import { EMOJI_COLORS } from '../color/index.ts';
 import type { DrainableStream } from '../OutputGate/index.ts';
 
 // Glyph mode auto-detects from TERM_PROGRAM. Pin the environment so cell-mode
@@ -358,6 +359,25 @@ describe('Screen cell render mode', () => {
     expect(out).toContain('48;2;80;80;80');
     expect(out).not.toContain('▀');
     expect(out).not.toContain('38;2;');
+    screen.dispose();
+  });
+
+  it('renders emoji glyphs when renderMode is emoji', () => {
+    const stream = new FakeStream();
+    const screen = new Screen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'emoji',
+      workerFactory: NO_WORKER,
+    });
+    expect(screen.getRenderMode()).toBe('emoji');
+    screen.pushFrame(frame(80));
+    const out = stream.chunks.join('');
+    expect(out).not.toContain('\x1b_G'); // no kitty APC
+    expect(out).not.toContain('38;'); // no SGR fg
+    expect(out).not.toContain('48;'); // no SGR bg
+    expect(EMOJI_COLORS.some((c) => out.includes(c.emoji))).toBe(true);
     screen.dispose();
   });
 

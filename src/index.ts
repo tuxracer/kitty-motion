@@ -29,6 +29,9 @@ export type { WorkerFactory, WorkerLike } from './kittyEncodeWorkerClient/index.
 export {
   rgbToAnsi256,
   rgbToAnsi16,
+  rgbToEmoji,
+  buildEmojiLUT,
+  EMOJI_COLORS,
   convertFrameToRgb24,
   isRgb15Buffer,
   buildGammaLUT,
@@ -36,7 +39,7 @@ export {
   allocateFrameBuffer,
   allocateFrameBufferLike,
 } from './color/index.ts';
-export type { FrameToRgb24Options } from './color/index.ts';
+export type { FrameToRgb24Options, EmojiColor } from './color/index.ts';
 
 // Kitty graphics protocol and output
 export {
