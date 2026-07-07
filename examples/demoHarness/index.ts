@@ -3,10 +3,9 @@
  * a timestamped debug log (<name>.log with renderer diagnostics and
  * per-write payload sizes), byte counting on stdout, resize handling, an
  * interactive status bar (transmitted fps, render mode, effect preset,
- * with "m"/"g"/"e"/"p" shortcuts to cycle render modes, toggle the cell
- * glyph strategy, cycle effect presets, and toggle pause, and "q" or
- * Ctrl-C to quit), and a config plus metrics summary printed to the
- * console on exit.
+ * with "m"/"e"/"p" shortcuts to cycle render modes, cycle effect presets,
+ * and toggle pause, and "q" or Ctrl-C to quit), and a config plus metrics
+ * summary printed to the console on exit.
  *
  * A demo supplies its name, screen options, and a renderFrame callback;
  * see bouncing-ball.ts for the smallest complete example. Effect options
@@ -20,11 +19,9 @@ import {
   detectKittyAnimationSupport,
   detectKittyFileTransferSupport,
   detectCellPixelSize,
-  detectCellRenderMode,
   detectCellSampling,
   isSSHSession,
   isMultiplexedSession,
-  type CellRenderMode,
   type CellSampling,
   type ColorDepth,
   type DrainableStream,
@@ -49,18 +46,22 @@ export * from "./types.ts";
 const envFlagEnabled = (value: string): boolean => value !== "0" && value !== "false";
 
 export const runDemo = async (demo: Demo): Promise<void> => {
-  // DEMO_RENDER_MODE forces a renderer. "kitty" forces the graphics protocol,
-  // "cell" and "half-block" force the block-glyph renderer at 2 pixels per cell,
+  // DEMO_RENDER_MODE forces a renderer, using the library renderMode values.
+  // "kitty" forces the graphics protocol, "half-block" (or the legacy alias
+  // "cell") forces the block-glyph renderer at 2 pixels per cell, and
   // "cell-background" forces it at 1 pixel per cell. Unset follows the graphics
   // probe. Other values are ignored
   const renderModeEnv = process.env["DEMO_RENDER_MODE"];
-  const forcedKitty = renderModeEnv === "kitty";
-  const forcedCellMode: CellRenderMode | undefined =
-    renderModeEnv === "cell" || renderModeEnv === "half-block"
-      ? "half-block"
-      : renderModeEnv === "cell-background"
-        ? "cell-background"
-        : undefined;
+  const initialRenderMode: RenderMode | undefined =
+    renderModeEnv === "kitty"
+      ? "kitty"
+      : renderModeEnv === "cell" || renderModeEnv === "half-block"
+        ? "half-block"
+        : renderModeEnv === "cell-background"
+          ? "cell-background"
+          : undefined;
+  const renderModeOverride: { renderMode?: RenderMode } =
+    initialRenderMode !== undefined ? { renderMode: initialRenderMode } : {};
 
   // Startup queries (sequential: each reads raw-mode stdin). On terminals
   // without Kitty graphics, Screen falls back to the block-glyph cell
@@ -91,7 +92,6 @@ export const runDemo = async (demo: Demo): Promise<void> => {
     deltaFrames: 0,
     skippedFrames: 0,
     modeSwitches: 0,
-    glyphSwitches: 0,
     effectSwitches: 0,
   };
 
@@ -139,24 +139,6 @@ export const runDemo = async (demo: Demo): Promise<void> => {
         : limitColorsEnv === "256"
           ? { limitColors: 256 }
           : {};
-
-  // DEMO_CELL_GLYPH pins the cell render mode: "half-block" (2 pixels per cell)
-  // or "cell-background" (1 pixel per cell). Unset auto-detects from TERM_PROGRAM
-  // (Terminal.app gets cell-background, because its font-drawn block glyphs do
-  // not tile the cell). Ignored in kitty mode
-  const cellGlyphEnv = process.env["DEMO_CELL_GLYPH"];
-  const pinnedCellMode: CellRenderMode | undefined =
-    cellGlyphEnv === "half-block" || cellGlyphEnv === "cell-background" ? cellGlyphEnv : undefined;
-  // The cell mode used whenever the demo renders in a cell mode. A cell mode
-  // forced by DEMO_RENDER_MODE wins, then DEMO_CELL_GLYPH, then auto-detect
-  let currentCellMode: CellRenderMode = forcedCellMode ?? pinnedCellMode ?? detectCellRenderMode();
-  // Initial renderMode for the Screen: forced kitty, a forced or pinned cell
-  // mode, or undefined so the graphics probe chooses kitty vs the cell fallback
-  const initialRenderMode: RenderMode | undefined = forcedKitty
-    ? "kitty"
-    : (forcedCellMode ?? (graphicsSupported ? undefined : pinnedCellMode));
-  const renderModeOverride: { renderMode?: RenderMode } =
-    initialRenderMode !== undefined ? { renderMode: initialRenderMode } : {};
 
   // DEMO_CELL_SAMPLING=box or nearest pins the cell downsampling strategy.
   // Unset auto-detects from TERM_PROGRAM (Terminal.app gets nearest, keeping
@@ -223,19 +205,13 @@ export const runDemo = async (demo: Demo): Promise<void> => {
       : fileTransferSupported
         ? "enabled (file probe: shared filesystem)"
         : "disabled (file probe: unsupported), streaming escapes";
-  const cellGlyphStatus =
-    pinnedCellMode !== undefined
-      ? `forced ${pinnedCellMode} (DEMO_CELL_GLYPH=${cellGlyphEnv})`
-      : forcedCellMode !== undefined
-        ? `${forcedCellMode} (from DEMO_RENDER_MODE=${renderModeEnv})`
-        : `${currentCellMode} (auto-detected from TERM_PROGRAM)`;
   const cellSamplingStatus =
     cellSamplingOverride.cellSampling !== undefined
       ? `forced ${cellSamplingOverride.cellSampling} (DEMO_CELL_SAMPLING=${cellSamplingEnv})`
       : `${detectCellSampling()} (auto-detected from TERM_PROGRAM)`;
   const { cols, rows } = screen.getDisplaySize();
 
-  const renderModeForced = forcedKitty || forcedCellMode !== undefined;
+  const renderModeForced = initialRenderMode !== undefined;
   const renderModeStatus =
     screen.getRenderMode() === "kitty"
       ? `kitty (graphics protocol${renderModeForced ? `, forced by DEMO_RENDER_MODE=${renderModeEnv}` : ""})`
@@ -251,29 +227,28 @@ export const runDemo = async (demo: Demo): Promise<void> => {
   logLine(`options ${JSON.stringify(demo.screen)} fps=${demo.fps ?? DEFAULT_FPS} (unset options: library defaults)`);
   logLine(`dirty rects ${dirtyRectsStatus}`);
   logLine(`file transfer ${fileTransferStatus}`);
-  logLine(`cell glyph ${cellGlyphStatus}`);
   logLine(`cell sampling ${cellSamplingStatus}`);
   logLine(`display ${cols}x${rows} cells, status row ${screen.getStatusRow()}`);
 
   // Mode cycle: drop the kitty entry when the terminal cannot parse kitty
   // graphics escapes, unless DEMO_RENDER_MODE forced kitty anyway
-  const kittyAvailable = graphicsSupported || forcedKitty;
+  const kittyAvailable = graphicsSupported || initialRenderMode === "kitty";
   const modeCycle = kittyAvailable
     ? MODE_CYCLE
-    : MODE_CYCLE.filter((entry) => !entry.kitty);
+    : MODE_CYCLE.filter((entry) => entry.renderMode !== "kitty");
 
   const initialDepth = limitColorsOverride.limitColors ?? 0;
-  const initialModeIndex = modeCycle.findIndex((entry) =>
-    screen.getRenderMode() === "kitty"
-      ? entry.kitty
-      : !entry.kitty && entry.limitColors === initialDepth,
+  const initialModeIndex = modeCycle.findIndex(
+    (entry) =>
+      entry.renderMode === screen.getRenderMode() &&
+      (entry.renderMode === "kitty" || entry.limitColors === initialDepth),
   );
   let modeIndex = initialModeIndex === -1 ? 0 : initialModeIndex;
   // Auto-detected cell depth occupies the truecolor slot but keeps a
   // distinct label until the first cycle pins an explicit depth
   let modeLabel =
     screen.getRenderMode() !== "kitty" && limitColorsOverride.limitColors === undefined
-      ? "cell (auto)"
+      ? `${screen.getRenderMode()} (auto)`
       : modeCycle[modeIndex].label;
 
   let effectIndex = 0;
@@ -286,7 +261,7 @@ export const runDemo = async (demo: Demo): Promise<void> => {
         demoName: demo.name,
         fps,
         paused,
-        modeLabel: screen.getRenderMode() !== "kitty" ? `${modeLabel} · ${currentCellMode === "cell-background" ? "bg" : "half"}` : modeLabel,
+        modeLabel,
         effectName: EFFECT_PRESETS[effectIndex].name,
       },
       process.stdout.columns ?? FALLBACK_TERMINAL_COLS,
@@ -303,10 +278,7 @@ export const runDemo = async (demo: Demo): Promise<void> => {
     const entry = modeCycle[modeIndex];
     modeLabel = entry.label;
     stats.modeSwitches++;
-    screen.updateOptions({
-      renderMode: entry.kitty ? "kitty" : currentCellMode,
-      limitColors: entry.limitColors,
-    });
+    screen.updateOptions({ renderMode: entry.renderMode, limitColors: entry.limitColors });
     logLine(`mode switch -> ${entry.label}`);
     redrawStatusBar(true);
   };
@@ -317,20 +289,6 @@ export const runDemo = async (demo: Demo): Promise<void> => {
     stats.effectSwitches++;
     screen.updateOptions({ ...EFFECT_RESET, ...preset.options });
     logLine(`effect switch -> ${preset.name}`);
-    redrawStatusBar(true);
-  };
-
-  const toggleGlyphMode = (): void => {
-    // The cell render mode only applies to the block-glyph renderer, so ignore
-    // the toggle in kitty mode
-    if (screen.getRenderMode() === "kitty") {
-      logLine("glyph toggle ignored (kitty mode)");
-      return;
-    }
-    currentCellMode = currentCellMode === "half-block" ? "cell-background" : "half-block";
-    stats.glyphSwitches++;
-    screen.updateOptions({ renderMode: currentCellMode });
-    logLine(`glyph switch -> ${currentCellMode}`);
     redrawStatusBar(true);
   };
 
@@ -367,7 +325,6 @@ export const runDemo = async (demo: Demo): Promise<void> => {
     console.log(`  render mode    ${renderModeStatus}`);
     console.log(`  dirty rects    ${dirtyRectsStatus}`);
     console.log(`  file transfer  ${fileTransferStatus}`);
-    console.log(`  cell glyph     ${cellGlyphStatus}`);
     console.log(`  cell sampling  ${cellSamplingStatus}`);
     console.log(`  cell size      ${cellPixelSize ? `${cellPixelSize.width}x${cellPixelSize.height}px (terminal-reported)` : "not reported, fallback ratio used"}`);
     console.log(`  display        ${cols}x${rows} cells`);
@@ -385,7 +342,6 @@ export const runDemo = async (demo: Demo): Promise<void> => {
       console.log(`  throughput     ${kb(stats.bytes / transmits)} KB/transmit avg, ${kb(stats.bytes / seconds)} KB/s`);
     }
     console.log(`  mode switches  ${count.format(stats.modeSwitches)} (final mode: ${modeLabel})`);
-    console.log(`  glyph switches ${count.format(stats.glyphSwitches)} (final glyph: ${currentCellMode})`);
     console.log(`  effects        ${count.format(stats.effectSwitches)} switches (final preset: ${EFFECT_PRESETS[effectIndex].name})`);
     console.log(`  log            ./${logFile}`);
   };
@@ -424,8 +380,6 @@ export const runDemo = async (demo: Demo): Promise<void> => {
   detachKeyboard = attachKeyboard((action) => {
     if (action === "cycleMode") {
       cycleMode();
-    } else if (action === "cycleGlyph") {
-      toggleGlyphMode();
     } else if (action === "cycleEffect") {
       cycleEffect();
     } else if (action === "togglePause") {

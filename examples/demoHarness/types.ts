@@ -1,6 +1,7 @@
 import type {
   ColorDepth,
   FrameBuffer,
+  RenderMode,
   ScreenOptions,
   ScreenUpdatableOptions,
 } from "../../src/index.ts";
@@ -25,11 +26,11 @@ export interface Demo {
 
 /** One entry in the render-mode cycle the "m" shortcut steps through */
 export interface ModeCycleEntry {
-  /** Status bar label, e.g. "cell 256" */
+  /** Status bar label: the library renderMode value plus color depth, e.g. "half-block 256" */
   label: string;
-  /** true for the kitty entry; cell entries render in the harness's current cell mode */
-  kitty: boolean;
-  /** Cell-mode SGR depth (unused by the kitty entry) */
+  /** The library renderMode this entry selects */
+  renderMode: RenderMode;
+  /** Cell-mode SGR depth (ignored by the kitty entry) */
   limitColors: ColorDepth;
 }
 

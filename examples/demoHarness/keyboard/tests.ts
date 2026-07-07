@@ -17,11 +17,6 @@ describe("actionForKey", () => {
     expect(actionForKey(CTRL_C)).toBe("quit");
   });
 
-  it("maps g to cycleGlyph", () => {
-    expect(actionForKey("g")).toBe("cycleGlyph");
-    expect(actionForKey("G")).toBe("cycleGlyph");
-  });
-
   it("maps p to togglePause", () => {
     expect(actionForKey("p")).toBe("togglePause");
     expect(actionForKey("P")).toBe("togglePause");

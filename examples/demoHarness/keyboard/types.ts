@@ -1,2 +1,2 @@
 /** Action a keypress maps to */
-export type KeyAction = "cycleMode" | "cycleGlyph" | "cycleEffect" | "togglePause" | "quit";
+export type KeyAction = "cycleMode" | "cycleEffect" | "togglePause" | "quit";

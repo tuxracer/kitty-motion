@@ -6,7 +6,6 @@ export const CTRL_C = "\x03";
 /** Keypress dispatch table (input is lowercased before lookup) */
 export const KEY_ACTIONS: Readonly<Record<string, KeyAction>> = {
   m: "cycleMode",
-  g: "cycleGlyph",
   e: "cycleEffect",
   p: "togglePause",
   q: "quit",
