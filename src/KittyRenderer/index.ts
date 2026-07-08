@@ -4,7 +4,7 @@ import { KittyEncodeWorkerClient, type WorkerFactory } from '../kittyEncodeWorke
 import { allocateFrameBufferLike, convertFrameToRgb24, frameUnitsPerPixel } from '../color/index.ts';
 import { APC, ST, clearScreen, hideCursor, showCursor } from '../ansi/index.ts';
 import { computeDisplayLayout } from '../displayLayout/index.ts';
-import type { ColorSpace, FrameBuffer } from '../types.ts';
+import type { CapturedFrame, ColorSpace, FrameBuffer } from '../types.ts';
 import { computeDirtyRect, fullFrameRect, unionRects, type Rect } from '../dirtyRect/index.ts';
 import { unlinkSync } from 'node:fs';
 import { frameFilePath, newFrameFileSession, sweepStaleFrameFiles } from '../frameFiles/index.ts';
@@ -181,6 +181,16 @@ export class KittyRenderer {
   // Get display dimensions
   getDisplaySize(): { cols: number; rows: number } {
     return { cols: this.displayCols, rows: this.displayRows };
+  }
+
+  // Snapshot the last rendered frame as post-processed RGB24 at source
+  // resolution. Returns a copy so the caller can retain it across frames.
+  captureRgb(): CapturedFrame {
+    return {
+      data: new Uint8Array(this.nativeRgbBuffer),
+      width: this.sourceWidth,
+      height: this.sourceHeight,
+    };
   }
 
   // Update display dimensions (for terminal resize handling)

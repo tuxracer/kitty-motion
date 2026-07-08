@@ -12,6 +12,7 @@ import {
   resetKittyGraphicsDetection,
 } from '../kittyProtocol/index.ts';
 import { resetCellPixelSizeDetection } from '../terminal/index.ts';
+import { KittyFrameEncoder } from '../kittyEncode/index.ts';
 import { EMOJI_COLORS } from '../color/index.ts';
 import type { DrainableStream } from '../OutputGate/index.ts';
 
@@ -171,6 +172,97 @@ describe('Screen', () => {
     const chunksAfterDispose = stream.chunks.length;
     screen[Symbol.dispose]();
     expect(stream.chunks.length).toBe(chunksAfterDispose); // no second teardown write
+  });
+
+  const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+  describe('capture', () => {
+    const makeScreen = (renderMode?: 'half-block'): Screen =>
+      new Screen({
+        sourceWidth: 4,
+        sourceHeight: 4,
+        output: new FakeStream(),
+        scale: 1,
+        workerFactory: NO_WORKER,
+        renderMode,
+      });
+
+    it('captureRgb returns the last frame as rgb at source resolution', () => {
+      const screen = makeScreen();
+      screen.pushFrame(frame(80));
+      const shot = screen.captureRgb();
+      expect(shot.width).toBe(4);
+      expect(shot.height).toBe(4);
+      expect([...shot.data]).toEqual(new Array(4 * 4 * 3).fill(80));
+      screen.dispose();
+    });
+
+    it('captureRgb is a copy, not a live view of the render buffer', () => {
+      const screen = makeScreen();
+      screen.pushFrame(frame(10));
+      const first = screen.captureRgb();
+      screen.pushFrame(frame(20)); // re-render mutates the internal buffer
+      expect(first.data.every((v) => v === 10)).toBe(true); // snapshot unchanged
+      expect(screen.captureRgb().data.every((v) => v === 20)).toBe(true);
+      screen.dispose();
+    });
+
+    it('captureRgb before the first frame is zero-filled', () => {
+      const screen = makeScreen();
+      expect(screen.captureRgb().data.every((v) => v === 0)).toBe(true);
+      screen.dispose();
+    });
+
+    it('capturePng returns standalone PNG bytes', () => {
+      const screen = makeScreen();
+      screen.pushFrame(frame(80));
+      const png = screen.capturePng();
+      expect([...png.subarray(0, 8)]).toEqual(PNG_SIGNATURE);
+      screen.dispose();
+    });
+
+    it('captures the underlying raster in cell render mode too', () => {
+      const screen = makeScreen('half-block');
+      expect(screen.getRenderMode()).toBe('half-block');
+      screen.pushFrame(frame(80));
+      expect([...screen.captureRgb().data]).toEqual(new Array(4 * 4 * 3).fill(80));
+      expect([...screen.capturePng().subarray(0, 8)]).toEqual(PNG_SIGNATURE);
+      screen.dispose();
+    });
+
+    it('capturePng uses max compression, ignoring pngCompressionLevel', () => {
+      // A compression-sensitive raster (varied bytes, no Math.random so it
+      // stays deterministic) so deflate level actually changes the output.
+      const width = 48;
+      const height = 48;
+      const raster = new Uint8Array(width * height * 3);
+      for (let i = 0; i < raster.length; i++) {
+        raster[i] = (i * 37 + ((i * i) >> 3)) & 0xff;
+      }
+
+      // A screen configured for the fastest render-loop compression still
+      // snapshots at max compression: its PNG equals a level-9 encode of the
+      // captured raster, not the level-1 encode the option would imply.
+      const screen = new Screen({
+        sourceWidth: width,
+        sourceHeight: height,
+        output: new FakeStream(),
+        scale: 1,
+        workerFactory: NO_WORKER,
+        pngCompressionLevel: 1,
+      });
+      screen.pushFrame(raster);
+      const shot = screen.captureRgb();
+      const png = screen.capturePng();
+      screen.dispose();
+
+      const encoder = new KittyFrameEncoder();
+      const atLevel9 = encoder.encodeImage(shot.data, shot.width, shot.height, 9);
+      const atLevel1 = encoder.encodeImage(shot.data, shot.width, shot.height, 1);
+      // Sanity: the raster really is compression-sensitive, so equality below is meaningful
+      expect([...atLevel9]).not.toEqual([...atLevel1]);
+      expect([...png]).toEqual([...atLevel9]);
+    });
   });
 
   it('updateOptions takes effect on subsequent frames', () => {

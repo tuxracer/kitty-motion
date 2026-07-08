@@ -102,6 +102,8 @@ selects the kitty renderer.
 | `getDisplaySize(): { cols: number; rows: number }` | Current on-screen size in terminal cells |
 | `getStatusRow(): number` | First terminal row below the image, for placing a status line |
 | `getRenderMode(): "kitty" \| "half-block" \| "cell-background" \| "emoji" \| "ascii"` | Which rendering path is active, the Kitty graphics protocol, one of the two block-glyph cell modes, emoji, or ascii |
+| `captureRgb(): CapturedFrame` | Snapshot the last rendered frame as post-processed RGB24 pixels at source resolution (a fresh copy). Same in every render mode. Zero-filled before the first `pushFrame` |
+| `capturePng(): Uint8Array` | Snapshot the last rendered frame as standalone PNG bytes at source resolution, always at maximum deflate compression (level 9, not the render loop's `pngCompressionLevel`) since a screenshot is not time sensitive. Write them yourself, e.g. `fs.writeFile(path, screen.capturePng())` |
 | `dispose()` | Clear the image, restore the cursor, and terminate the encode worker. Called automatically on process exit and termination signals unless `autoDispose: false` |
 
 ## Low-level exports
@@ -110,7 +112,7 @@ For building a custom pipeline instead of using `Screen`:
 
 - `KittyRenderer`, `KittyRendererOptions`: the full graphics-path pipeline (scaling, color, post-processing, diffing, worker-based encoding) without `Screen`'s layout, resize, and probe orchestration
 - `CellRenderer`, `CellRendererOptions`, `CellLayout`: cell fallback renderer for terminals without Kitty graphics (half blocks, or background-colored spaces on Terminal.app)
-- `KittyFrameEncoder`, `KittyFrameMeta`: pure scale → PNG → base64 → APC-chunk encoder, usable synchronously or inside a worker
+- `KittyFrameEncoder`, `KittyFrameMeta`, `PngEncodeParams`: pure scale → PNG → base64 → APC-chunk encoder, usable synchronously or inside a worker. `encodeImage(rgb, width, height, compression)` produces a standalone PNG (no escape wrapping) for screenshots
 - `KittyEncodeWorkerClient`, `WorkerFactory`, `WorkerLike`: owns the encode worker, transfers frames, recycles buffers, coalesces latest-wins
 - `KittyEncodeRequest`, `KittyEncodeResponse`, `isKittyEncodeRequest`, `isKittyEncodeResponse`: the message contract a custom `workerFactory` worker must speak
 - `kittyGridAspectRatio`: compute the terminal cell-grid aspect ratio needed to display a source framebuffer correctly
@@ -129,7 +131,7 @@ For building a custom pipeline instead of using `Screen`:
 - `ASCII_SHAPES`, `ASCII_CHARS`, `nearestAsciiChar`, `createAsciiLookup`, `enhanceAsciiContrast`, `SHAPE_REGION_COLS`, `SHAPE_REGION_ROWS`, `SHAPE_VECTOR_DIMS`, `AsciiShape`, `AsciiLookup`: the font-generated per-character shape-vector table and the nearest-shape lookup used by the opt-in `ascii` render mode
 - `computeDisplayLayout`, `DisplayLayout`, `DisplayLayoutOptions`: centered, aspect-correct cell-grid placement (shared by both renderers)
 - `rgbToAnsi256`, `rgbToAnsi16`, `convertFrameToRgb24`, `FrameToRgb24Options`, `buildGammaLUT`, `frameUnitsPerPixel`, `allocateFrameBuffer`, `allocateFrameBufferLike`, `isRgb15Buffer`: color quantization, gamma tables, framebuffer conversion, and framebuffer allocation primitives
-- `FrameBuffer`, `ColorSpace`, `Renderer`, `RenderMode`: shared framebuffer types and the renderer contract both renderers implement
+- `FrameBuffer`, `ColorSpace`, `Renderer`, `RenderMode`, `CapturedFrame`: shared framebuffer types, the renderer contract both renderers implement, and the RGB snapshot `captureRgb` returns
 
 ## Design notes
 

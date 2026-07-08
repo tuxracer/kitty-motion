@@ -1,5 +1,6 @@
 import { KittyRenderer, type KittyRendererOptions } from '../KittyRenderer/index.ts';
 import { CellRenderer } from '../CellRenderer/index.ts';
+import { KittyFrameEncoder } from '../kittyEncode/index.ts';
 import { OutputGate } from '../OutputGate/index.ts';
 import {
   detectKittyAnimationSupport,
@@ -8,8 +9,8 @@ import {
   getKittyGraphicsSupported,
 } from '../kittyProtocol/index.ts';
 import { detectCellPixelSize, detectCellRenderMode } from '../terminal/index.ts';
-import type { Renderer, RenderMode } from '../types.ts';
-import { AUTO_DISPOSE_SIGNALS } from './consts.ts';
+import type { CapturedFrame, Renderer, RenderMode } from '../types.ts';
+import { AUTO_DISPOSE_SIGNALS, SCREENSHOT_PNG_COMPRESSION } from './consts.ts';
 import type { ScreenOptions, ScreenUpdatableOptions } from './types.ts';
 
 export * from './consts.ts';
@@ -87,6 +88,8 @@ export class Screen {
   private options: ScreenOptions;
   private isDisposed = false;
   private resizeListener: (() => void) | null = null;
+  // Lazily created on the first capturePng() call (both renderers share it)
+  private captureEncoder: KittyFrameEncoder | null = null;
 
   constructor(options: ScreenOptions) {
     this.options = { ...options };
@@ -186,6 +189,36 @@ export class Screen {
   // First row below the image (for host status bars)
   getStatusRow(): number {
     return this.renderer.getStatusRow();
+  }
+
+  /**
+   * Snapshot the last rendered frame as post-processed RGB24 pixels at source
+   * resolution (gamma and CRT effects already applied). Works in every render
+   * mode, since the snapshot is the raster both renderers draw from, not the
+   * on-screen glyph approximation. The returned `data` is a fresh copy, safe
+   * to retain. Before the first pushFrame the buffer is zero-filled (black).
+   */
+  captureRgb(): CapturedFrame {
+    return this.renderer.captureRgb();
+  }
+
+  /**
+   * Snapshot the last rendered frame as standalone PNG bytes at source
+   * resolution. Encodes the same pixels as captureRgb(); the host writes the
+   * result to disk (e.g. `fs.writeFile(path, screen.capturePng())`). Always
+   * uses maximum deflate compression for the smallest file, ignoring the
+   * render loop's `pngCompressionLevel`, since a screenshot is not time
+   * sensitive.
+   */
+  capturePng(): Uint8Array {
+    const frame = this.renderer.captureRgb();
+    this.captureEncoder ??= new KittyFrameEncoder();
+    return this.captureEncoder.encodeImage(
+      frame.data,
+      frame.width,
+      frame.height,
+      SCREENSHOT_PNG_COMPRESSION,
+    );
   }
 
   dispose(): void {

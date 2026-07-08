@@ -17,6 +17,21 @@ export type RenderMode = 'kitty' | 'half-block' | 'cell-background' | 'emoji' | 
 export type CellRenderMode = Exclude<RenderMode, 'kitty'>;
 
 /**
+ * A snapshot of the last frame a renderer processed: the post-processed
+ * RGB24 raster at source resolution (gamma and effects already applied). The
+ * data is a fresh copy, safe to retain, and is 3 bytes per pixel in row-major
+ * order (`width * height * 3` bytes). Zero-filled before the first frame.
+ */
+export interface CapturedFrame {
+  /** Post-processed RGB24 pixels at source resolution (a fresh copy) */
+  data: Uint8Array;
+  /** Frame width in pixels (source resolution) */
+  width: number;
+  /** Frame height in pixels (source resolution) */
+  height: number;
+}
+
+/**
  * Renderer surface Screen drives; implemented by KittyRenderer (Kitty
  * graphics protocol) and CellRenderer (block-glyph fallback).
  */
@@ -30,5 +45,6 @@ export interface Renderer {
   setDimensions(): void;
   getDisplaySize(): { cols: number; rows: number };
   getStatusRow(): number;
+  captureRgb(): CapturedFrame;
   destroy(): void;
 }

@@ -18,7 +18,7 @@ import { buildKittyDeleteSequence } from '../kittyProtocol/index.ts';
 import { isFullFrameRect } from '../dirtyRect/index.ts';
 import { RGB24_BYTES_PER_PIXEL } from '../consts.ts';
 import { FILE_MEDIUM_FOR_DELTAS, KITTY_CHUNK_SIZE } from './consts.ts';
-import type { KittyFrameMeta, EncodeJob } from './types.ts';
+import type { KittyFrameMeta, EncodeJob, PngEncodeParams } from './types.ts';
 
 export * from './types.ts';
 export * from './consts.ts';
@@ -47,6 +47,30 @@ export class KittyFrameEncoder {
   encode(nativeRgb: Uint8Array, meta: KittyFrameMeta): string {
     const job = this.buildJob(nativeRgb, meta);
     return this.buildPayload(this.encodePng(job, meta), meta, job);
+  }
+
+  /**
+   * Encode a full-frame RGB24 buffer into a standalone PNG (no Kitty escape
+   * wrapping), for screenshots. The pixels are encoded at their given
+   * resolution with no scaling. Returns a fresh copy, not the pooled internal
+   * buffer, so the result stays valid across later encode() calls.
+   */
+  encodeImage(
+    rgb: Uint8Array,
+    width: number,
+    height: number,
+    pngCompressionLevel: number
+  ): Uint8Array {
+    const job: EncodeJob = {
+      rgb,
+      sourceWidth: width,
+      sourceHeight: height,
+      scaledWidth: width,
+      scaledHeight: height,
+      scaledX: 0,
+      scaledY: 0,
+    };
+    return new Uint8Array(this.encodePng(job, { scale: 1, pngCompressionLevel }));
   }
 
   // Resolve the frame's dirty rect into the pixels and dimensions to encode.
@@ -95,32 +119,32 @@ export class KittyFrameEncoder {
     return this.rectRgbBuffer;
   }
 
-  private encodePng(job: EncodeJob, meta: KittyFrameMeta): Buffer {
+  private encodePng(job: EncodeJob, params: PngEncodeParams): Buffer {
     // Upscaling duplicates pixels without adding colors, so quantize at
     // native resolution: the palette scan touches scale^2 fewer pixels and
     // scaling then moves 1-byte palette indices instead of 3-byte RGB.
     // Only integer upscales map native pixels 1:1 onto the scaled grid, so
     // fractional upscales fall through to the sampling path below
-    const intScale = Math.round(meta.scale);
+    const intScale = Math.round(params.scale);
     if (
-      meta.scale >= 1 &&
+      params.scale >= 1 &&
       job.scaledWidth === job.sourceWidth * intScale &&
       job.scaledHeight === job.sourceHeight * intScale
     ) {
-      const indexedPng = this.encodePngIndexedFromNative(job, meta);
+      const indexedPng = this.encodePngIndexedFromNative(job, params);
       if (indexedPng !== null) {
         return indexedPng;
       }
       // >256 colors at native resolution implies >256 when scaled too,
       // so skip re-quantizing and encode RGB directly
-      return this.encodePngRgb(this.scaleRgb(job, meta.scale), job, meta);
+      return this.encodePngRgb(this.scaleRgb(job, params.scale), job, params);
     }
 
     // Downscales and fractional upscales sample pixels one by one, and the
     // sampled subset may fit a palette even when the native frame doesn't,
     // so quantize the scaled buffer
-    const scaled = this.scaleRgb(job, meta.scale);
-    return this.encodePngFromScaled(scaled, job, meta);
+    const scaled = this.scaleRgb(job, params.scale);
+    return this.encodePngFromScaled(scaled, job, params);
   }
 
   // Scale RGB buffer from native to output resolution. Integer upscales
@@ -200,7 +224,7 @@ export class KittyFrameEncoder {
 
   // Quantize at native resolution, then expand the 1-byte palette indices
   // straight into the PNG scanlines. Returns null above 256 unique colors.
-  private encodePngIndexedFromNative(job: EncodeJob, meta: KittyFrameMeta): Buffer | null {
+  private encodePngIndexedFromNative(job: EncodeJob, params: PngEncodeParams): Buffer | null {
     const { rgb: nativeRgb, sourceWidth, sourceHeight, scaledWidth, scaledHeight } = job;
     const pixelCount = sourceWidth * sourceHeight;
 
@@ -214,7 +238,7 @@ export class KittyFrameEncoder {
     }
 
     // Build raw scanlines: 1 filter byte + 1 palette index per pixel per row
-    const intScale = Math.round(meta.scale);
+    const intScale = Math.round(params.scale);
     const rawDataSize = scaledHeight * (1 + scaledWidth);
     const rawData = this.getRawDataBuffer(rawDataSize);
 
@@ -228,7 +252,7 @@ export class KittyFrameEncoder {
         rawData[rawRowStart] = 0; // Filter type: none
         rawData.set(this.indexedBuffer.subarray(y * sourceWidth, (y + 1) * sourceWidth), rawRowStart + 1);
       }
-      return this.buildIndexedPng(rawData, indexed.palette, job, meta);
+      return this.buildIndexedPng(rawData, indexed.palette, job, params);
     }
 
     if (this.indexedRowBuffer.length !== scaledWidth) {
@@ -256,12 +280,12 @@ export class KittyFrameEncoder {
       }
     }
 
-    return this.buildIndexedPng(rawData, indexed.palette, job, meta);
+    return this.buildIndexedPng(rawData, indexed.palette, job, params);
   }
 
   // Encode an already-scaled RGB buffer to PNG (indexed with RGB fallback).
   // Used for the downscaling path, where quantization must see the sampled pixels.
-  private encodePngFromScaled(rgbData: Uint8Array, job: EncodeJob, meta: KittyFrameMeta): Buffer {
+  private encodePngFromScaled(rgbData: Uint8Array, job: EncodeJob, params: PngEncodeParams): Buffer {
     const { scaledWidth: width, scaledHeight: height } = job;
     const pixelCount = width * height;
 
@@ -272,7 +296,7 @@ export class KittyFrameEncoder {
     const indexed = rgbToIndexed(rgbData, width, height, this.indexedBuffer, this.paletteBuffer);
     if (indexed === null) {
       // More than 256 colors - fall back to RGB encoding
-      return this.encodePngRgb(rgbData, job, meta);
+      return this.encodePngRgb(rgbData, job, params);
     }
 
     // Build raw scanlines: 1 filter byte + 1 palette index per pixel per row
@@ -285,21 +309,21 @@ export class KittyFrameEncoder {
       rawData.set(this.indexedBuffer.subarray(y * width, (y + 1) * width), rawRowStart + 1);
     }
 
-    return this.buildIndexedPng(rawData, indexed.palette, job, meta);
+    return this.buildIndexedPng(rawData, indexed.palette, job, params);
   }
 
   private buildIndexedPng(
     rawData: Buffer,
     palette: Uint8Array,
     job: EncodeJob,
-    meta: KittyFrameMeta
+    params: PngEncodeParams
   ): Buffer {
-    const compressed = deflateSync(rawData, { level: meta.pngCompressionLevel });
+    const compressed = deflateSync(rawData, { level: params.pngCompressionLevel });
     return this.assemblePng(PNG_COLOR_TYPE_INDEXED, job.scaledWidth, job.scaledHeight, compressed, palette);
   }
 
   // Fallback RGB encoding when palette exceeds 256 colors
-  private encodePngRgb(rgbData: Uint8Array, job: EncodeJob, meta: KittyFrameMeta): Buffer {
+  private encodePngRgb(rgbData: Uint8Array, job: EncodeJob, params: PngEncodeParams): Buffer {
     const { scaledWidth: width, scaledHeight: height } = job;
 
     const rowBytes = width * RGB24_BYTES_PER_PIXEL;
@@ -312,7 +336,7 @@ export class KittyFrameEncoder {
       rawData.set(rgbData.subarray(y * rowBytes, (y + 1) * rowBytes), rawRowStart + 1);
     }
 
-    const compressed = deflateSync(rawData, { level: meta.pngCompressionLevel });
+    const compressed = deflateSync(rawData, { level: params.pngCompressionLevel });
     return this.assemblePng(PNG_COLOR_TYPE_RGB, width, height, compressed, null);
   }
 

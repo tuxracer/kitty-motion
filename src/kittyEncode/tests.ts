@@ -499,4 +499,42 @@ describe('KittyFrameEncoder', () => {
       }
     }
   });
+
+  describe('encodeImage', () => {
+    it('produces standalone PNG bytes with no Kitty escape wrapping', () => {
+      const png = new KittyFrameEncoder().encodeImage(makeFrame(), 4, 4, DEFAULT_PNG_COMPRESSION);
+      expect([...png.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      expect(Buffer.from(png).toString('binary')).not.toContain('\x1b_G'); // no APC introducer
+    });
+
+    it('round-trips a full-frame image at native resolution', () => {
+      const frame = makeFrame();
+      const decoded = decodePng(Buffer.from(new KittyFrameEncoder().encodeImage(frame, 4, 4, DEFAULT_PNG_COMPRESSION)));
+      expect(decoded.width).toBe(4);
+      expect(decoded.height).toBe(4);
+      expect(decoded.pixels).toEqual(frame);
+    });
+
+    it('encodes RGB when the frame exceeds 256 colors', () => {
+      const size = 32;
+      const frame = new Uint8Array(size * size * RGB);
+      for (let i = 0; i < size * size; i++) {
+        frame[i * RGB] = i % 256;
+        frame[i * RGB + 1] = Math.floor(i / 256) * 60;
+        frame[i * RGB + 2] = 99;
+      }
+      const decoded = decodePng(Buffer.from(new KittyFrameEncoder().encodeImage(frame, size, size, DEFAULT_PNG_COMPRESSION)));
+      expect(decoded.colorType).toBe(2);
+      expect(decoded.pixels).toEqual(frame);
+    });
+
+    it('returns a fresh copy that survives later encode() calls', () => {
+      const encoder = new KittyFrameEncoder();
+      const png = encoder.encodeImage(makeFrame(), 4, 4, DEFAULT_PNG_COMPRESSION);
+      const snapshot = Uint8Array.from(png);
+      // Drive an unrelated encode that reuses the encoder's pooled buffers
+      encoder.encode(new Uint8Array(8 * 8 * RGB).fill(123), makeMeta({ sourceWidth: 8, sourceHeight: 8, scaledWidth: 8, scaledHeight: 8 }));
+      expect(png).toEqual(snapshot);
+    });
+  });
 });

@@ -31,7 +31,14 @@ import {
 import type { PostProcessingPipeline } from '../postProcessing/index.ts';
 import { clearScreen, hideCursor, moveCursor, showCursor } from '../ansi/index.ts';
 import { computeDirtyRect, isFullFrameRect, type Rect } from '../dirtyRect/index.ts';
-import type { CellRenderMode, CellSampling, ColorDepth, ColorSpace, FrameBuffer } from '../types.ts';
+import type {
+  CapturedFrame,
+  CellRenderMode,
+  CellSampling,
+  ColorDepth,
+  ColorSpace,
+  FrameBuffer,
+} from '../types.ts';
 import { RGB24_BYTES_PER_PIXEL } from '../consts.ts';
 import { resolveRendererOptions } from '../rendererOptions/index.ts';
 import {
@@ -240,6 +247,17 @@ export class CellRenderer {
 
   getDisplaySize(): { cols: number; rows: number } {
     return { cols: this.cols, rows: this.rows };
+  }
+
+  // Snapshot the last rendered frame as post-processed RGB24 at source
+  // resolution (the same raster the glyph grid is sampled from, before
+  // downsampling). Returns a copy so the caller can retain it across frames.
+  captureRgb(): CapturedFrame {
+    return {
+      data: new Uint8Array(this.nativeRgbBuffer),
+      width: this.sourceWidth,
+      height: this.sourceHeight,
+    };
   }
 
   getStatusRow(): number {

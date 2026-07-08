@@ -122,6 +122,24 @@ Adjustments default to `1.0` (no change) and effect intensities default to `0.0`
 | `curvature`           | number >= 0 | `0.0`   | CRT barrel curvature intensity                |
 | `chromaticAberration` | number >= 0 | `0.0`   | Chromatic aberration intensity                |
 
+## Screenshots
+
+Capture the current frame as an image. Both methods snapshot the last frame the renderer processed, at source resolution, with gamma and post-processing already applied. They return the same pixels in every render mode, since the snapshot is the raster the library draws from, not the on-screen glyph approximation.
+
+```ts
+import { writeFile } from "node:fs/promises";
+
+screen.pushFrame(frame);
+
+// Raw post-processed RGB24 pixels (a fresh copy, safe to keep)
+const { data, width, height } = screen.captureRgb();
+
+// Or standalone PNG bytes, ready to write anywhere
+await writeFile("frame.png", screen.capturePng());
+```
+
+`capturePng()` always encodes at maximum deflate compression (level 9) for the smallest file, ignoring `pngCompressionLevel` (which only tunes the live render loop). A screenshot is a one-off, so it spends the extra CPU. Before the first `pushFrame()`, the snapshot is a zero-filled (black) image.
+
 ## Requirements
 
 - Node.js >= 24

@@ -67,6 +67,18 @@ export const isKittyEncodeResponse = (value: unknown): value is KittyEncodeRespo
 
 export type { Rect } from '../dirtyRect/index.ts';
 
+/**
+ * The subset of frame metadata the PNG-encoding path reads. A full
+ * KittyFrameMeta satisfies it structurally, and standalone image encoding
+ * (screenshots via KittyFrameEncoder.encodeImage) supplies just these two.
+ */
+export interface PngEncodeParams {
+  /** Output scale relative to the source buffer (1 = native resolution) */
+  scale: number;
+  /** Deflate level for the PNG IDAT chunk (1-9, higher = smaller and slower) */
+  pngCompressionLevel: number;
+}
+
 // Rect-resolved encoding input: the (possibly cropped) source pixels and
 // their scaled output dimensions and placement within the full image
 export interface EncodeJob {
