@@ -398,6 +398,11 @@ export class KittyFrameEncoder {
   // c/r: display size in cells. The tail is the medium-specific key
   // (chunking m= for escapes, t=t for files)
   private buildFullControl(meta: KittyFrameMeta, tail: string): string {
+    if (meta.placement === 'unicode') {
+      // Virtual placement (U=1): the image is composited over host-rendered
+      // placeholder cells, not displayed at the cursor. c/r give the cell grid.
+      return `a=T,U=1,f=100,i=${meta.currentImageId},q=2,c=${meta.displayCols},r=${meta.displayRows},${tail}`;
+    }
     return `a=T,f=100,i=${meta.currentImageId},p=1,q=2,C=1,c=${meta.displayCols},r=${meta.displayRows},${tail}`;
   }
 
@@ -431,7 +436,9 @@ export class KittyFrameEncoder {
 
     const base64 = png.toString('base64');
     const chunks: string[] =
-      meta.transmit === 'full' ? [moveCursor(meta.offsetRow, meta.offsetCol)] : [];
+      meta.transmit === 'full' && meta.placement !== 'unicode'
+        ? [moveCursor(meta.offsetRow, meta.offsetCol)]
+        : [];
 
     for (let i = 0; i < base64.length; i += KITTY_CHUNK_SIZE) {
       const chunk = base64.slice(i, i + KITTY_CHUNK_SIZE);
@@ -451,8 +458,10 @@ export class KittyFrameEncoder {
       chunks.push(`${APC}${control};${chunk}${ST}`);
     }
 
-    // Delete the previous frame's image after displaying the new one
-    if (meta.transmit === 'full' && meta.deletePrevious) {
+    // Delete the previous frame's image after displaying the new one.
+    // Unicode placement drives display from placeholder cells (no
+    // double-buffer), so it never deletes a previous image.
+    if (meta.transmit === 'full' && meta.placement !== 'unicode' && meta.deletePrevious) {
       chunks.push(buildKittyDeleteSequence(meta.previousImageId));
     }
 
@@ -465,8 +474,15 @@ export class KittyFrameEncoder {
     const encodedPath = Buffer.from(filePath).toString('base64');
     if (meta.transmit === 'full') {
       const control = this.buildFullControl(meta, 't=t');
-      const deleteChunk = meta.deletePrevious ? buildKittyDeleteSequence(meta.previousImageId) : '';
-      return `${moveCursor(meta.offsetRow, meta.offsetCol)}${APC}${control};${encodedPath}${ST}${deleteChunk}`;
+      // Unicode placement drives display from placeholder cells: no cursor
+      // move to position it and no previous-image delete (no double-buffer).
+      const movePrefix =
+        meta.placement === 'unicode' ? '' : moveCursor(meta.offsetRow, meta.offsetCol);
+      const deleteChunk =
+        meta.placement !== 'unicode' && meta.deletePrevious
+          ? buildKittyDeleteSequence(meta.previousImageId)
+          : '';
+      return `${movePrefix}${APC}${control};${encodedPath}${ST}${deleteChunk}`;
     }
     const control = this.buildDeltaControl(meta, job, 't=t');
     return `${APC}${control};${encodedPath}${ST}`;

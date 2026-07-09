@@ -190,6 +190,40 @@ describe('KittyFrameEncoder', () => {
     expect(withoutDelete).not.toContain('a=d');
   });
 
+  it('transmits a virtual placement without a cursor move or delete for unicode placement', () => {
+    const meta = makeMeta({
+      placement: 'unicode',
+      transmit: 'full',
+      currentImageId: 7,
+      deletePrevious: true,
+      previousImageId: 9,
+    });
+    const payload = new KittyFrameEncoder().encode(makeFrame(), meta);
+
+    const [first] = parseEscapes(payload);
+    expect(first.control).toContain('U=1');
+    expect(first.control).toContain('i=7');
+    expect(first.control).toContain('c=40');
+    expect(first.control).toContain('r=20');
+    expect(payload).not.toContain('a=d'); // no delete of a previous double-buffer image
+    expect(/\x1b\[\d+;\d+H/.test(payload)).toBe(false); // no cursor-position escape
+  });
+
+  it('keeps the cursor move and delete for the default cursor placement', () => {
+    const meta = makeMeta({
+      placement: 'cursor',
+      transmit: 'full',
+      deletePrevious: true,
+      previousImageId: 9,
+    });
+    const payload = new KittyFrameEncoder().encode(makeFrame(), meta);
+
+    expect(payload.startsWith('\x1b[3;5H')).toBe(true); // moveCursor(offsetRow=3, offsetCol=5)
+    expect(payload).toContain('\x1b_Ga=d,d=I,i=9,q=2\x1b\\');
+    const [first] = parseEscapes(payload);
+    expect(first.control).not.toContain('U=1');
+  });
+
   it('falls back to RGB encoding above 256 unique colors when upscaling', () => {
     const size = 32;
     const frame = new Uint8Array(size * size * RGB);

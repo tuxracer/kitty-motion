@@ -492,6 +492,43 @@ describe('Screen cell render mode', () => {
   });
 });
 
+describe('Screen placeholder rows', () => {
+  const PLACEHOLDER_CHAR = '\u{10EEEE}';
+
+  it('returns one placeholder row per display row in kitty unicode placement mode', () => {
+    const stream = new FakeStream();
+    const screen = new Screen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      scale: 1,
+      renderMode: 'kitty',
+      placement: 'unicode',
+      region: { offsetCol: 1, offsetRow: 1, cols: 20, rows: 12 },
+      workerFactory: NO_WORKER,
+    });
+    const rows = screen.getPlaceholderRows();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.length).toBe(screen.getDisplaySize().rows);
+    expect(rows[0]).toContain(PLACEHOLDER_CHAR);
+    screen.dispose();
+  });
+
+  it('returns no placeholder rows in cell render mode', () => {
+    const stream = new FakeStream();
+    const screen = new Screen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'half-block',
+      placement: 'unicode',
+      workerFactory: NO_WORKER,
+    });
+    expect(screen.getPlaceholderRows()).toEqual([]);
+    screen.dispose();
+  });
+});
+
 describe('Screen embedded and region', () => {
   const REGION = { offsetCol: 3, offsetRow: 2, cols: 20, rows: 12 };
 

@@ -28,6 +28,8 @@ export interface KittyFrameMeta {
   deletePrevious: boolean;
   /** 'full' transmits and displays a new image (a=T); 'delta' edits the displayed image in place (a=f) */
   transmit: 'full' | 'delta';
+  /** Placement mode: "unicode" transmits a virtual placement (U=1) for host-rendered Unicode placeholders instead of a cursor-positioned display. Undefined or "cursor" is the default cursor-positioned behavior. */
+  placement?: 'cursor' | 'unicode';
   /** Region of the source frame to encode, in source pixel coordinates (the whole frame when transmit is 'full') */
   dirtyRect: Rect;
   /** How the payload travels: 'escape' embeds base64 data in the escape sequence (chunked), 'file' writes a temp file and sends its base64 path (t=t, terminal-deleted) */

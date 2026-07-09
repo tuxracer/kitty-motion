@@ -30,6 +30,8 @@ export interface ScreenUpdatableOptions extends EffectOptions {
   region?: ScreenRegion;
   /** Share the terminal with a host TUI: non-destructive output (no full-screen clear, no global cursor hide/show, deletes only this Screen's own images/cells) and, unless set explicitly, disables autoResize and autoDispose so the host owns resize and teardown (default: false) */
   embedded?: boolean;
+  /** Kitty placement mode. "cursor" (default) displays the image at a cursor position. "unicode" transmits a virtual placement for host-rendered Unicode placeholder cells (Kitty/Ghostty), so a TUI framework like Ink owns layout; read the cells with getPlaceholderRows(). Ignored on the cell-glyph fallback (default: "cursor") */
+  placement?: 'cursor' | 'unicode';
 }
 
 export interface ScreenOptions extends ScreenUpdatableOptions {

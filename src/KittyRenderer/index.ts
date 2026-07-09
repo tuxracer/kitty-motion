@@ -14,6 +14,7 @@ import {
   getKittyFileTransferSupported,
 } from '../kittyProtocol/index.ts';
 import { resolveRendererOptions } from '../rendererOptions/index.ts';
+import { buildPlaceholderRows } from '../placeholder/index.ts';
 import type { PostProcessingPipeline } from '../postProcessing/index.ts';
 import {
   INITIAL_FULL_RENDER_FRAMES,
@@ -106,6 +107,9 @@ export class KittyRenderer {
   // Non-destructive output for sharing the terminal with a host TUI (skip
   // full-screen clear and global cursor toggles, delete only own images)
   private embedded: boolean;
+  // Placement mode: "cursor" displays at a cursor position; "unicode" uses a
+  // virtual placement (U=1) composited over host-rendered placeholder cells
+  private placement: 'cursor' | 'unicode';
 
   constructor(options: KittyRendererOptions = {}) {
     const common = resolveRendererOptions(options);
@@ -134,6 +138,7 @@ export class KittyRenderer {
     this.encodeWorkerFactory = options.encodeWorkerFactory;
     this.dirtyRects = options.dirtyRects;
     this.fileTransfer = options.fileTransfer;
+    this.placement = options.placement ?? 'cursor';
     if (options.fileTransfer !== false) {
       // Remove frame files leaked by crashed processes before creating new ones
       sweepStaleFrameFiles();
@@ -145,6 +150,10 @@ export class KittyRenderer {
     // scales in either direction sample with nearest-neighbor
     const rawScale = options.scale ?? DEFAULT_RENDER_SCALE;
     this.scale = clamp(rawScale, MIN_RENDER_SCALE, MAX_RENDER_SCALE);
+
+    if (this.placement === 'unicode' && !(Number.isInteger(this.scale) && this.scale >= 1)) {
+      this.onDebug?.('unicode placement: non-integer scale disables partial deltas, every frame re-sends the full image');
+    }
 
     // Calculate display size to fill terminal (Kitty will scale the image)
     const { cols, rows, offsetCol, offsetRow } = this.calculateDisplaySize();
@@ -302,11 +311,18 @@ export class KittyRenderer {
     let deletePrevious = false;
 
     if (transmit === 'full') {
-      currentImageId = this.imageId + this.fullFrameParity;
-      previousImageId = this.imageId + (1 - this.fullFrameParity);
-      deletePrevious = this.frameNumber > 0;
-      this.fullFrameParity = 1 - this.fullFrameParity;
-      this.displayedImageId = currentImageId;
+      if (this.placement === 'unicode') {
+        // Single stable id, no double-buffer: re-transmitting to the same id
+        // replaces the image and rebinds the on-screen placeholder cells.
+        currentImageId = this.imageId;
+        this.displayedImageId = this.imageId;
+      } else {
+        currentImageId = this.imageId + this.fullFrameParity;
+        previousImageId = this.imageId + (1 - this.fullFrameParity);
+        deletePrevious = this.frameNumber > 0;
+        this.fullFrameParity = 1 - this.fullFrameParity;
+        this.displayedImageId = currentImageId;
+      }
     }
 
     const medium: 'escape' | 'file' = this.canUseFileMedium() ? 'file' : 'escape';
@@ -327,6 +343,7 @@ export class KittyRenderer {
       previousImageId,
       deletePrevious,
       transmit,
+      placement: this.placement,
       dirtyRect,
       medium,
       filePath,
@@ -359,11 +376,25 @@ export class KittyRenderer {
       return '';
     }
 
-    // Decide full vs delta and the region to send
+    // Decide full vs delta and the region to send. Unicode placement never
+    // re-transmits except to (re)create the image: a full a=T to a live id
+    // deletes its placements, so every non-recreate frame is an a=f edit.
     const transmit: 'full' | 'delta' =
-      isInitialFrame || this.needsFullTransmit || !this.canUseDelta() ? 'full' : 'delta';
+      this.placement === 'unicode'
+        ? this.needsFullTransmit
+          ? 'full'
+          : 'delta'
+        : isInitialFrame || this.needsFullTransmit || !this.canUseDelta()
+          ? 'full'
+          : 'delta';
+    // A partial (sub-rectangle) a=f edit only encodes correctly at an integer
+    // scale >= 1 (the encoder scales the rect by Math.round(scale)). The cursor
+    // path only reaches 'delta' when canUseDelta() guaranteed that, but the
+    // unicode path forces delta regardless, so gate the sub-rect there.
+    const partialDeltaOk =
+      this.placement !== 'unicode' || (Number.isInteger(this.scale) && this.scale >= 1);
     let dirtyRect = fullFrameRect(this.sourceWidth, this.sourceHeight);
-    if (transmit === 'delta' && !this.postProcessing.hasNonLocalEffects()) {
+    if (transmit === 'delta' && partialDeltaOk && !this.postProcessing.hasNonLocalEffects()) {
       const damage =
         changed !== null && this.pendingDirty !== null
           ? unionRects(changed, this.pendingDirty)
@@ -415,11 +446,28 @@ export class KittyRenderer {
     return this.renderInternal(frameBuffer, 'rgb24');
   }
 
+  /**
+   * Placeholder text for host-rendered Unicode placement, one string per grid
+   * row (each `displayCols` cells wide). Returns [] unless placement is
+   * "unicode". Re-fetch when the grid size changes (after a resize).
+   */
+  getPlaceholderRows(): string[] {
+    if (this.placement !== 'unicode') {
+      return [];
+    }
+    return buildPlaceholderRows(this.imageId, this.displayCols, this.displayRows);
+  }
+
   // Clear screen
   clearScreen(): string {
     // Embedded: delete only this instance's own images (leave sibling panels
     // and the rest of the terminal untouched)
     if (this.embedded) {
+      // Unicode placement uses a single stable id (no double-buffer), so there
+      // is only one image to delete.
+      if (this.placement === 'unicode') {
+        return buildKittyDeleteSequence(this.imageId);
+      }
       return buildKittyDeleteSequence(this.imageId) + buildKittyDeleteSequence(this.imageId + 1);
     }
     // Owned terminal: delete all images and clear the screen

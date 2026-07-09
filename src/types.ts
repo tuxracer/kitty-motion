@@ -62,6 +62,11 @@ export interface Renderer {
   setDimensions(): void;
   getDisplaySize(): { cols: number; rows: number };
   getStatusRow(): number;
+  /**
+   * Placeholder text rows for host-rendered Unicode placement, one string per
+   * grid row. Empty unless the renderer is in unicode placement mode.
+   */
+  getPlaceholderRows(): string[];
   captureRgb(): CapturedFrame;
   destroy(): void;
 }

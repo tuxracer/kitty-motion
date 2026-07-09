@@ -89,6 +89,7 @@ selects the kitty renderer.
 | `fileTransfer` | `boolean` | `undefined` | Deliver frames as temp files instead of base64 escape payloads. `undefined` follows `detectKittyFileTransferSupport()`, and `true`/`false` overrides the probe |
 | `renderMode` | `"kitty" \| "half-block" \| "cell-background" \| "emoji" \| "ascii"` | `undefined` | Renderer selection. `undefined` follows the cached graphics probe (`getKittyGraphicsSupported() === false` auto-detects the cell mode from `TERM_PROGRAM`, `true` or `null` selects kitty). `"kitty"` forces the graphics protocol, `"half-block"` and `"cell-background"` force the block-glyph fallback, and `"emoji"` (opt-in only) renders one emoji square per cell by nearest color, and `"ascii"` (opt-in only) renders one printable ASCII character per cell by nearest shape |
 | `limitColors` | `0 \| 16 \| 256` | `undefined` | Cell mode only. SGR color depth. When `undefined`, a `COLORTERM` of `truecolor`/`24bit` selects truecolor (`0`), a `TERM` containing `256color` selects 256, and anything else selects 16 |
+| `placement` | `"cursor" \| "unicode"` | `"cursor"` | Kitty placement model. `"cursor"` displays the image at a cursor position. `"unicode"` transmits a virtual placement (`U=1`) and animates it via frame edits, so a host TUI owns layout and the video survives host redraws. Kitty and Ghostty only, ignored on the cell-glyph fallback. Pair with `getPlaceholderRows()` |
 | `workerFactory` | `WorkerFactory` | real worker | Override worker creation (tests, embedding) |
 | `onDebug` | `(message: string) => void` | (none) | Optional sink for internal diagnostic messages |
 | ...`EffectOptions` | | | `gamma`, `scanlines`, `saturation`, `brightness`, `contrast`, `vignette`, `bloom`, `bloomThreshold`, `ntsc`, `curvature`, `chromaticAberration`: CRT-style post-processing, all default off/neutral |
@@ -104,6 +105,7 @@ selects the kitty renderer.
 | `updateOptions(partial: Partial<ScreenUpdatableOptions>)` | Apply new option values at runtime. Resets diff state, so the next frame renders in full |
 | `getDisplaySize(): { cols: number; rows: number }` | Current on-screen size in terminal cells |
 | `getStatusRow(): number` | First terminal row below the image, for placing a status line |
+| `getPlaceholderRows(): string[]` | Placeholder text for host-rendered Kitty Unicode placement, one string per grid row, for the host to draw as text (e.g. one Ink `<Text>` per line). Empty unless the Screen was created with `placement: "unicode"` on a Kitty graphics terminal. Re-read after a resize or `setRegion()`, since the grid size can change |
 | `getRenderMode(): "kitty" \| "half-block" \| "cell-background" \| "emoji" \| "ascii"` | Which rendering path is active, the Kitty graphics protocol, one of the two block-glyph cell modes, emoji, or ascii |
 | `captureRgb(): CapturedFrame` | Snapshot the last rendered frame as post-processed RGB24 pixels at source resolution (a fresh copy). Same in every render mode. Zero-filled before the first `pushFrame` |
 | `capturePng(): Uint8Array` | Snapshot the last rendered frame as standalone PNG bytes at source resolution, always at maximum deflate compression (level 9, not the render loop's `pngCompressionLevel`) since a screenshot is not time sensitive. Write them yourself, e.g. `fs.writeFile(path, screen.capturePng())` |
@@ -125,6 +127,8 @@ For building a custom pipeline instead of using `Screen`:
 - `detectKittyGraphicsSupport`, `getKittyGraphicsSupported`, `resetKittyGraphicsDetection`, `buildKittyImageSequence`, `buildKittyDeleteSequence`, `buildCursorPositionSequence`: Kitty graphics protocol detection and escape-sequence builders
 - `detectKittyAnimationSupport`, `getKittyAnimationSupported`, `resetKittyAnimationDetection`: Kitty animation-protocol (frame edit) support detection, required for dirty-rect delta frames
 - `detectKittyFileTransferSupport`, `getKittyFileTransferSupported`, `resetKittyFileTransferDetection`: shared-filesystem detection for file-based frame transmission
+- `detectKittyUnicodePlaceholderSupport`: env-based, advisory check for Kitty Unicode placeholder placement (Kitty and Ghostty). Opting into `placement: "unicode"` is the real gate
+- `buildPlaceholderRows`, `encodeImageIdFg`, `PLACEHOLDER_CHAR`, `PlaceholderError`, `isPlaceholderError`, `PlaceholderErrorCode`: build the `U+10EEEE` placeholder cells for Kitty Unicode placement (one string per grid row, image id encoded in the foreground color) and the typed error they can throw
 - `computeDirtyRect`, `unionRects`, `fullFrameRect`, `isFullFrameRect`, `Rect`: changed-region bounding-box helpers behind dirty-rect delta rendering
 - `OutputGate`, `DrainableStream`: backpressure-aware writable wrapper that drops frames instead of queueing them
 - `PostProcessingPipeline`, `EffectOptions`: the CRT-style post-processing effects pipeline
@@ -240,3 +244,20 @@ several panels can coexist in one process without deleting each other's images.
 Because the host draws its own chrome, the reliable pattern is the single
 compositor. kitty-motion owns the video rectangle and the host draws its
 controls in other rows, and the host must not repaint the video rows.
+
+`placement: "unicode"` removes the single-compositor restriction by handing
+layout to the host. The image is transmitted once as a virtual placement
+(`a=T,U=1` with `c`/`r` from the region grid and no cursor move), and after
+that only pixels update, through the existing dirty-rect `a=f` frame edits. A
+full `a=T` re-transmit to the same id would delete its placements, so the
+renderer never re-transmits. It uses a single stable image id (no
+double-buffer). The host renders the placeholder cells returned by
+`getPlaceholderRows()` as ordinary text, and the terminal fills whichever cells
+carry them with the video, so a host redraw that reprints the text re-anchors
+the placement. Each placeholder cell is `U+10EEEE` plus row and column
+combining diacritics, with the image id carried in the cell's foreground color.
+Support is Kitty and Ghostty only. `detectKittyUnicodePlaceholderSupport()` is
+an env-based, advisory check (Kitty via `KITTY_WINDOW_ID`/`TERM`, Ghostty via
+`TERM_PROGRAM`/`GHOSTTY_*`). Opting into `placement: "unicode"` is the real
+gate. On the cell-glyph fallback the option is ignored and
+`getPlaceholderRows()` returns an empty array.

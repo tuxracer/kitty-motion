@@ -105,6 +105,7 @@ Runnable demos live in [`examples/`](examples/). Run `node examples/bouncing-bal
 | `renderMode`          | `"kitty"`, `"half-block"`, `"cell-background"`, `"emoji"`, `"ascii"`, undefined | probe | Renderer selection. `"kitty"` uses the graphics protocol. `"half-block"` and `"cell-background"` use the block-glyph renderer (2 pixels per cell via U+2580, or 1 pixel per cell via background-colored spaces). `"emoji"` renders one of nine emoji squares per cell by nearest color (needs an emoji-capable terminal) and is opt-in only. `"ascii"` renders one printable ASCII character per cell chosen by nearest shape, colorized by the cell's average color, and is opt-in only. `undefined` follows the graphics probe, then auto-detects the cell mode from `TERM_PROGRAM` (Terminal.app gets `"cell-background"`) |
 | `limitColors`         | `0`, `16`, `256`, undefined               | auto    | Cell-mode color depth, `0` means truecolor. `undefined` auto-detects from `COLORTERM`/`TERM`                                                                                                                                                     |
 | `cellSampling`        | `"box"`, `"nearest"`, undefined           | nearest | Cell-mode downsampling. `"nearest"` copies each cell's source-region center pixel so hard-edged content stays solid, `"box"` averages the region in linear light for smoother gradients. In `"ascii"` mode `"nearest"` caps the samples per cell so cost stays flat as source resolution grows, while `"box"` averages the full footprint (the two match on small sources). `undefined` defaults to `"nearest"` |
+| `placement`           | `"cursor"`, `"unicode"`                    | `"cursor"` | Kitty placement model. `"cursor"` displays the image at a cursor position. `"unicode"` transmits a virtual placement and animates it via frame edits, so a host TUI framework owns layout and the video survives the host's redraws. Kitty and Ghostty only, ignored on the cell-glyph fallback. Pair with `getPlaceholderRows()` |
 
 ### Post-processing effects
 
@@ -148,7 +149,7 @@ kitty-motion can render into a fixed rectangle and share the rest of the screen 
 
 In embedded mode the output is non-destructive. There is no full-screen clear and no global cursor hide or show, and only this Screen's own images or cells are removed on dispose. The host keeps ownership of stdout for its chrome, so it usually sets `autoResize: false` and `autoDispose: false` and drives resize and teardown itself. Embedded mode defaults both to `false` when you do not set them.
 
-The host must not repaint the video rows. In this fixed-region model kitty-motion and the host each own a disjoint part of the screen, so a host redraw over the video rectangle fights the renderer. (A future placeholder mode will let the host own layout and have the video survive host redraws.)
+The host must not repaint the video rows. In this fixed-region model kitty-motion and the host each own a disjoint part of the screen, so a host redraw over the video rectangle fights the renderer. The Unicode placeholder mode below lifts this restriction, letting the host own layout and the video survive the host's redraws.
 
 ```typescript
 import { createScreen } from "kitty-motion";
@@ -173,6 +174,57 @@ screen.setRegion({ offsetCol, offsetRow, cols, rows });
 ```
 
 See [`examples/embedded-panel.ts`](examples/embedded-panel.ts) for a full host integration.
+
+### Unicode placeholder mode
+
+The fixed-region model above makes kitty-motion the single compositor, so the
+host has to leave the video rows untouched. Unicode placement drops that rule.
+The host owns layout and the video survives the host's redraws, so there is no
+single-compositor restriction.
+
+Pass `placement: 'unicode'` and the image is transmitted once as a Kitty
+virtual placement. Instead of positioning the image itself, kitty-motion hands
+you placeholder text through `getPlaceholderRows()`, one string per grid row,
+and your framework draws that text wherever it places the panel (in Ink, one
+`<Text>` per line). The terminal fills whatever cells hold the placeholder
+characters with the video, so a host redraw that reprints the placeholder text
+just re-anchors the video in place. This mode is Kitty and Ghostty only. On the
+block-glyph fallback the option is ignored and `getPlaceholderRows()` returns an
+empty array.
+
+In unicode mode `region.cols`/`region.rows` set the grid and the offset is not
+used for positioning, since the host positions the placeholder text itself.
+Re-read `getPlaceholderRows()` after a resize or `setRegion()`, because the grid
+size can change.
+
+```typescript
+import { createScreen } from "kitty-motion";
+
+const screen = await createScreen({
+  output: process.stdout,
+  sourceWidth,
+  sourceHeight,
+  placement: "unicode",
+  embedded: true,
+  region: { offsetCol, offsetRow, cols, rows },
+  autoResize: false,
+  autoDispose: false,
+});
+
+// Draw one text line per grid row wherever your framework lays out the panel.
+// In Ink, render each string as its own <Text>.
+const placeholderRows = screen.getPlaceholderRows();
+drawPlaceholderText(placeholderRows);
+
+for (const frame of frames) {
+  screen.pushFrame(frame);
+  await nextFrame();
+}
+```
+
+See [`examples/ink-video-player/`](examples/ink-video-player/) for a full Ink
+integration (Ink controls around a kitty-motion video panel). Run it with
+`pnpm example:ink` on a Kitty or Ghostty terminal.
 
 ## Requirements
 

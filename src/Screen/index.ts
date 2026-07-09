@@ -133,12 +133,13 @@ export class Screen {
       };
       return new KittyRenderer(rendererOptions);
     }
-    const { scale, pngCompressionLevel, dirtyRects, fileTransfer, ...cellOptions } = rest;
+    const { scale, pngCompressionLevel, dirtyRects, fileTransfer, placement, ...cellOptions } = rest;
     const kittyOnly: ReadonlyArray<[name: string, value: unknown]> = [
       ['scale', scale],
       ['pngCompressionLevel', pngCompressionLevel],
       ['dirtyRects', dirtyRects],
       ['fileTransfer', fileTransfer],
+      ['placement', placement],
       ['workerFactory', workerFactory],
     ];
     const ignored = kittyOnly.filter(([, value]) => value !== undefined).map(([name]) => name);
@@ -209,6 +210,19 @@ export class Screen {
   // First row below the image (for host status bars)
   getStatusRow(): number {
     return this.renderer.getStatusRow();
+  }
+
+  /**
+   * Placeholder text for host-rendered Kitty Unicode placement (one string per
+   * grid row), for a TUI framework to render as text. Empty unless the Screen
+   * was created with placement: "unicode" on a Kitty graphics terminal.
+   * Re-read after a resize or setRegion, since the grid size may change.
+   */
+  getPlaceholderRows(): string[] {
+    if (this.isDisposed) {
+      return [];
+    }
+    return this.renderer.getPlaceholderRows();
   }
 
   /**

@@ -63,10 +63,19 @@ export {
   detectKittyFileTransferSupport,
   getKittyFileTransferSupported,
   resetKittyFileTransferDetection,
+  detectKittyUnicodePlaceholderSupport,
   buildKittyImageSequence,
   buildKittyDeleteSequence,
   buildCursorPositionSequence,
 } from './kittyProtocol/index.ts';
+export {
+  buildPlaceholderRows,
+  encodeImageIdFg,
+  PLACEHOLDER_CHAR,
+  PlaceholderError,
+  isPlaceholderError,
+} from './placeholder/index.ts';
+export type { PlaceholderErrorCode } from './placeholder/index.ts';
 export { OutputGate } from './OutputGate/index.ts';
 export type { DrainableStream } from './OutputGate/index.ts';
 

@@ -12,6 +12,7 @@ import { writeFileSync, unlinkSync } from 'node:fs';
 import { APC, ST, moveCursor } from '../ansi/index.ts';
 import { probeTerminal } from '../helpers/index.ts';
 import { frameFilePath, newFrameFileSession } from '../frameFiles/index.ts';
+import type { SessionEnv } from '../terminal/index.ts';
 import {
   KITTY_PROTOCOL_CHUNK_SIZE,
   KITTY_GRAPHICS_DETECT_TIMEOUT_MS,
@@ -87,6 +88,22 @@ export const getKittyGraphicsSupported = (): boolean | null => kittyGraphicsSupp
  */
 export const resetKittyGraphicsDetection = (): void => {
   kittyGraphicsSupportedCache = null;
+};
+
+/**
+ * Best-effort check for Kitty Unicode placeholder support, from the terminal
+ * environment. Kitty and Ghostty implement it. There is no runtime query, so
+ * this is advisory: the developer opting into unicode placement is the real
+ * gate. Pass a custom env for testing.
+ */
+export const detectKittyUnicodePlaceholderSupport = (env: SessionEnv = process.env): boolean => {
+  if (env['KITTY_WINDOW_ID'] || env['TERM'] === 'xterm-kitty') {
+    return true;
+  }
+  if (env['TERM_PROGRAM'] === 'ghostty' || env['TERM'] === 'xterm-ghostty') {
+    return true;
+  }
+  return Object.keys(env).some((key) => key.startsWith('GHOSTTY_'));
 };
 
 /**

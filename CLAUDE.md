@@ -8,6 +8,7 @@
 - `pnpm build` - typecheck then tsup. The build has two entries: `index` and `encode-worker` (the PNG encode worker must ship as its own bundle so it can be loaded in a worker thread)
 - `pnpm generate:ascii-shapes` - regenerate `src/asciiShapes/shapeVectors.ts` (the committed per-character shape-vector table) from the unscii-16 bitmap font via `scripts/generateAsciiShapes/`. Only needed when the shape sampling geometry or glyph set changes
 - `node examples/bouncing-ball.ts` - run the demo (requires Node >= 24; a Kitty-graphics-capable terminal gets full-quality graphics, other terminals fall back to block glyphs); `examples/plasma.ts` is a full-frame-change stress demo; `examples/green-hill.ts` is a parallax side-scroller workload. Demos share `examples/demoHarness/` (capability detection, debug log, interactive status bar, exit metrics summary); new demos supply a name, screen options, and a `renderFrame` callback. While a demo runs, `m` cycles render modes labeled by their library `renderMode` value (kitty, plus half-block and cell-background each at truecolor/256/16 color depth, emoji, and ascii), `e` cycles effect presets, `p` toggles pause, `q` or Ctrl-C exits
+- `pnpm example:ink` - run the Ink video-player example (`examples/ink-video-player/`), an Ink UI with a kitty-motion video panel driven through Kitty Unicode placeholder placement (`placement: "unicode"`). Ink owns layout and the video survives Ink's redraws. Needs a Kitty or Ghostty terminal
 - Demo env overrides force capability paths for testing: `DEMO_RENDER_MODE=kitty|cell|half-block|cell-background|emoji|ascii` (force the graphics protocol or the block-glyph fallback, where `cell` is an alias for the default `half-block`, and `ascii` forces the shape-matched ASCII renderer), `DEMO_DIRTY_RECTS=0|1`, `DEMO_FILE_TRANSFER=0|1`, `DEMO_LIMIT_COLORS=0|16|256` (pin cell-mode color depth; 0 means truecolor), `DEMO_CELL_SAMPLING=box|nearest` (pin the cell downsampling strategy). Unset means probe-detected behavior. Env overrides set the initial state; the status bar shortcuts can change render mode and effects afterward at runtime
 
 ## Architecture
@@ -37,7 +38,16 @@ Screen deleting only its own images or cells (`KittyRenderer` claims a
 per-instance image-id range so multiple panels can coexist). In embedded mode
 `autoResize` and `autoDispose` default off so the host owns resize and teardown.
 
-Supporting modules: `CellRenderer` (block-glyph fallback rendering with cell-level diffing), `rendererOptions` (shared option resolution and frame-buffer, gamma, and post-processing setup for both renderers), `displayLayout` (centered, aspect-correct cell-grid placement shared by both renderers), `kittyEncode` (scales, PNG-encodes, and chunks frames into complete protocol payloads; runs inside the worker, or on the main thread as a sync fallback), `kittyProtocol` (escape sequences), `dirtyRect` (changed-region bounding boxes for delta frames), `frameFiles` (temp-file naming and stale-file sweep for file-based transmission), `png` (chunk encoding), `fitToTerminal` and `aspect` (sizing), `color` (gamma tables, RGB15 to RGB24), `asciiShapes` (generated per-character shape-vector table, nearest-shape lookup, and contrast step for the ascii render mode), `ansi` (cursor control), `terminal` (cell pixel size detection), `postProcessing` (CRT effects), `helpers` (small shared utilities). Root `src/types.ts` and `src/consts.ts` hold cross-module types (`ColorSpace`, `FrameBuffer`) and constants.
+With `placement: "unicode"` (Kitty and Ghostty only), `KittyRenderer` takes the
+Unicode placeholder path so a host TUI framework like Ink owns layout. The image
+is transmitted once as a virtual placement (`a=T,U=1`, no cursor move) using a
+single stable image id, then animated only through `a=f` frame edits (a full
+re-transmit would delete the placements). The `placeholder` module builds the
+placeholder cells (`U+10EEEE` plus row/column diacritics, image id in the
+foreground color) that `Screen.getPlaceholderRows()` returns for the host to
+draw as text.
+
+Supporting modules: `CellRenderer` (block-glyph fallback rendering with cell-level diffing), `rendererOptions` (shared option resolution and frame-buffer, gamma, and post-processing setup for both renderers), `displayLayout` (centered, aspect-correct cell-grid placement shared by both renderers), `kittyEncode` (scales, PNG-encodes, and chunks frames into complete protocol payloads; runs inside the worker, or on the main thread as a sync fallback), `kittyProtocol` (escape sequences), `placeholder` (builds the `U+10EEEE` placeholder cells for Kitty Unicode placement), `dirtyRect` (changed-region bounding boxes for delta frames), `frameFiles` (temp-file naming and stale-file sweep for file-based transmission), `png` (chunk encoding), `fitToTerminal` and `aspect` (sizing), `color` (gamma tables, RGB15 to RGB24), `asciiShapes` (generated per-character shape-vector table, nearest-shape lookup, and contrast step for the ascii render mode), `ansi` (cursor control), `terminal` (cell pixel size detection), `postProcessing` (CRT effects), `helpers` (small shared utilities). Root `src/types.ts` and `src/consts.ts` hold cross-module types (`ColorSpace`, `FrameBuffer`) and constants.
 
 Deeper technical detail (protocol usage, measured optimizations) lives in `docs/TRD.md`.
 
@@ -45,8 +55,8 @@ Deeper technical detail (protocol usage, measured optimizations) lives in `docs/
 
 `src/index.ts` exports two tiers, mirroring the "Which layer do I want?" section in `docs/TRD.md`:
 
-- **Tier 1 (main API)**: `Screen`/`createScreen`, their option types, and the capability probe trios (`detect*`/`get*`/`reset*`)
-- **Tier 2 (building blocks)**: complete, composable units for assembling a custom render pipeline: both renderers, `KittyFrameEncoder`, the worker client and its message contract (public because `workerFactory` is a documented option), protocol sequence builders, layout/sizing math, dirty rects, `OutputGate`, post-processing, and color quantization
+- **Tier 1 (main API)**: `Screen`/`createScreen`, their option types (including the `placement` option and `Screen.getPlaceholderRows()` for Kitty Unicode placement), the capability probe trios (`detect*`/`get*`/`reset*`), and the advisory `detectKittyUnicodePlaceholderSupport`
+- **Tier 2 (building blocks)**: complete, composable units for assembling a custom render pipeline: both renderers, `KittyFrameEncoder`, the worker client and its message contract (public because `workerFactory` is a documented option), protocol sequence builders, the `placeholder` builders (`buildPlaceholderRows`, `encodeImageIdFg`, `PLACEHOLDER_CHAR`), layout/sizing math, dirty rects, `OutputGate`, post-processing, and color quantization
 
 The test for adding an export: could a developer building their own pipeline use this unit on its own? Internals that only serve the library's own plumbing stay private, including byte-level codec helpers (`png`), probe-handshake parsers, trivial glyph/SGR constants, option-default constants (the README options table documents defaults), and the `ansi`, `frameFiles`, and `helpers` modules. Whenever the surface changes, update the "Low-level exports" list in `docs/TRD.md` to match.
 

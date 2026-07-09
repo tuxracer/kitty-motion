@@ -12,4 +12,6 @@ export interface KittyRendererOptions extends RendererOptionsBase {
   dirtyRects?: boolean;
   /** File-based transmission (t=t): undefined follows detectKittyFileTransferSupport(), true/false forces (default: undefined). When using KittyRenderer directly without an output sink, the returned payload must be written to the terminal or the frame's temp file is orphaned until the next stale sweep. */
   fileTransfer?: boolean;
+  /** Placement mode. "cursor" (default) positions the image at a cursor location and displays it directly. "unicode" transmits a virtual placement (U=1) for host-rendered Unicode placeholder cells (Kitty/Ghostty), so a TUI framework owns layout; pair with getPlaceholderRows() (default: "cursor") */
+  placement?: 'cursor' | 'unicode';
 }

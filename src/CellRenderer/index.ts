@@ -270,6 +270,11 @@ export class CellRenderer {
     return this.offsetRow + this.rows;
   }
 
+  // Cell renderers have no Kitty images, so no Unicode placeholders
+  getPlaceholderRows(): string[] {
+    return [];
+  }
+
   setDimensions(): void {
     this.allocateGrid();
   }

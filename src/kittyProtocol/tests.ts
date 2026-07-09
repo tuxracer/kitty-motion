@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseKittyProbeResponse,
   buildKittyFileProbeQuery,
+  detectKittyUnicodePlaceholderSupport,
   KITTY_ANIMATION_PROBE_IMAGE_ID,
   KITTY_FILE_PROBE_IMAGE_ID,
 } from './index.ts';
@@ -37,6 +38,25 @@ describe('parseKittyProbeResponse', () => {
     const stream = `\x1b_Gi=${ID};OK\x1b\\\x1b_Gi=${KITTY_FILE_PROBE_IMAGE_ID};EBADF:err\x1b\\`;
     expect(parseKittyProbeResponse(stream, ID)).toBe(true);
     expect(parseKittyProbeResponse(stream, KITTY_FILE_PROBE_IMAGE_ID)).toBe(false);
+  });
+});
+
+describe('detectKittyUnicodePlaceholderSupport', () => {
+  it('returns true inside a kitty session', () => {
+    expect(detectKittyUnicodePlaceholderSupport({ KITTY_WINDOW_ID: '1' })).toBe(true);
+  });
+
+  it('returns true for a ghostty terminal', () => {
+    expect(detectKittyUnicodePlaceholderSupport({ TERM_PROGRAM: 'ghostty' })).toBe(true);
+  });
+
+  it('returns true when a GHOSTTY_ variable is present', () => {
+    expect(detectKittyUnicodePlaceholderSupport({ GHOSTTY_RESOURCES_DIR: '/x' })).toBe(true);
+  });
+
+  it('returns false for other terminals and an empty env', () => {
+    expect(detectKittyUnicodePlaceholderSupport({ TERM: 'xterm-256color' })).toBe(false);
+    expect(detectKittyUnicodePlaceholderSupport({})).toBe(false);
   });
 });
 

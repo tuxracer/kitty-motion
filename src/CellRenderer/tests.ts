@@ -990,3 +990,10 @@ describe('CellRenderer region and embedded', () => {
     expect(renderer.showCursor()).toBe('');
   });
 });
+
+describe('CellRenderer placeholder rows', () => {
+  it('has no Unicode placeholders (cell mode draws no Kitty images)', () => {
+    const renderer = new CellRenderer({ sourceWidth: 4, sourceHeight: 4, renderMode: 'half-block' });
+    expect(renderer.getPlaceholderRows()).toEqual([]);
+  });
+});

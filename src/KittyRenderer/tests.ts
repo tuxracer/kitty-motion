@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { KittyRenderer, IMAGE_ID_STRIDE } from './index.ts';
 import { resetKittyAnimationDetection, resetKittyFileTransferDetection } from '../kittyProtocol/index.ts';
 import { isKittyEncodeRequest, type KittyEncodeRequest } from '../kittyEncode/index.ts';
+import { encodeImageIdFg } from '../placeholder/index.ts';
 import { FRAME_FILE_PREFIX } from '../frameFiles/index.ts';
 import { existsSync, writeFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -485,5 +486,90 @@ describe('KittyRenderer region and embedded', () => {
     const owned = new KittyRenderer({ sourceWidth: 4, sourceHeight: 4, scale: 1 });
     expect(owned.hideCursor()).not.toBe('');
     expect(owned.showCursor()).not.toBe('');
+  });
+});
+
+describe('KittyRenderer unicode placement', () => {
+  const PLACEHOLDER = '\u{10EEEE}';
+  const hasCursorMove = (payload: string): boolean => /\x1b\[\d+;\d+H/.test(payload);
+
+  // Extract the image id from a full-frame payload's a=T control (i=<id>)
+  const imageIdOf = (payload: string): number => {
+    const match = /i=(\d+)/.exec(payload);
+    if (match === null) {
+      throw new Error('payload has no image id');
+    }
+    return Number(match[1]);
+  };
+
+  // Uses the default render scale (integer, so partial deltas are allowed) and
+  // no file transfer, so payloads are inline escapes the assertions can read.
+  const unicodeRenderer = (extra: Record<string, unknown> = {}): KittyRenderer =>
+    new KittyRenderer({
+      placement: 'unicode',
+      region: { offsetCol: 1, offsetRow: 1, cols: 20, rows: 10 },
+      sourceWidth: 8,
+      sourceHeight: 8,
+      fileTransfer: false,
+      ...extra,
+    });
+
+  it('sends a virtual placement (U=1) with the cell grid and no cursor move on the first frame', () => {
+    const r = unicodeRenderer();
+    const { cols, rows } = r.getDisplaySize();
+    const payload = r.renderRgb24(rgbFrame(8, 8, 100));
+
+    expect(payload).toContain('a=T');
+    expect(payload).toContain('U=1');
+    expect(payload).toContain(`c=${cols}`);
+    expect(payload).toContain(`r=${rows}`);
+    expect(hasCursorMove(payload)).toBe(false); // host placeholder cells position it
+  });
+
+  it('edits pixels in place with a=f (never re-transmits) after the initial create', () => {
+    const r = unicodeRenderer();
+    const base = rgbFrame(8, 8, 100);
+    r.renderRgb24(base); // initial full create
+
+    const payload = r.renderRgb24(withPixel(base, 8, 5, 3));
+    expect(payload).toContain('a=f');
+    expect(payload).not.toContain('U=1'); // re-transmitting would delete the placement
+    expect(payload).not.toContain('a=T');
+    expect(hasCursorMove(payload)).toBe(false);
+  });
+
+  it('builds one placeholder row per grid row, carrying the image id in the foreground color', () => {
+    const r = unicodeRenderer();
+    const { cols, rows } = r.getDisplaySize();
+    const imageId = imageIdOf(r.renderRgb24(rgbFrame(8, 8, 100)));
+
+    const placeholderRows = r.getPlaceholderRows();
+    expect(placeholderRows).toHaveLength(rows);
+    for (const row of placeholderRows) {
+      // Count placeholder code points (each is a surrogate pair in a JS string)
+      expect([...row].filter((ch) => ch === PLACEHOLDER)).toHaveLength(cols);
+      expect(row).toContain(encodeImageIdFg(imageId));
+    }
+  });
+
+  it('deletes only the single stable image id when embedded', () => {
+    const r = unicodeRenderer({ embedded: true });
+    const imageId = imageIdOf(r.renderRgb24(rgbFrame(8, 8, 100)));
+
+    const cleared = r.clearScreen();
+    const deletes = cleared.match(/a=d,d=I,i=\d+,/g) ?? [];
+    expect(deletes).toHaveLength(1); // no double-buffer, so exactly one delete
+    expect(cleared).toContain(`a=d,d=I,i=${imageId},`);
+    expect(cleared).not.toContain('\x1b[2J'); // no full-screen wipe
+  });
+
+  it('returns no placeholder rows and keeps cursor placement in the default (cursor) mode', () => {
+    const r = new KittyRenderer({ sourceWidth: 8, sourceHeight: 8, scale: 1, fileTransfer: false });
+    expect(r.getPlaceholderRows()).toEqual([]);
+
+    const payload = r.renderRgb24(rgbFrame(8, 8, 100));
+    expect(hasCursorMove(payload)).toBe(true);
+    expect(payload).toContain('a=T');
+    expect(payload).not.toContain('U=1');
   });
 });
