@@ -1,3 +1,5 @@
+import type { ScreenRegion } from '../types.ts';
+
 export interface DisplayLayoutOptions {
   /** Source framebuffer width in pixels */
   sourceWidth: number;
@@ -9,6 +11,8 @@ export interface DisplayLayoutOptions {
   reservedRows: number;
   /** Terminal columns each cell occupies (1 normally, 2 for double-wide emoji cells) (default: 1) */
   columnsPerCell?: number;
+  /** Confine the layout to this sub-region (1-based cell coords); centers within it instead of the whole terminal. When set, `reservedRows` is ignored. */
+  region?: ScreenRegion;
 }
 
 /** A centered cell-grid placement; offsets are 1-based for ANSI sequences */

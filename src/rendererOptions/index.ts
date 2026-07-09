@@ -29,6 +29,8 @@ export const resolveRendererOptions = (options: RendererOptionsBase): ResolvedRe
     enableDiffRendering: options.enableDiffRendering ?? true,
     colorEnabled: options.colorEnabled ?? true,
     reservedRows: options.reservedRows ?? 0,
+    region: options.region,
+    embedded: options.embedded ?? false,
     onDebug: options.onDebug,
     gammaLUT: buildGammaLUT(gamma),
     hasIdentityGamma: gamma === DEFAULT_GAMMA,

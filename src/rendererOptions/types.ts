@@ -1,5 +1,5 @@
 import type { EffectOptions, PostProcessingPipeline } from '../postProcessing/index.ts';
-import type { ColorSpace, FrameBuffer } from '../types.ts';
+import type { ColorSpace, FrameBuffer, ScreenRegion } from '../types.ts';
 
 /** Options shared by KittyRendererOptions and CellRendererOptions */
 export interface RendererOptionsBase extends EffectOptions {
@@ -17,6 +17,10 @@ export interface RendererOptionsBase extends EffectOptions {
   colorEnabled?: boolean;
   /** Rows to reserve outside the display area, e.g. for a status line (default: 0) */
   reservedRows?: number;
+  /** Confine output to a fixed sub-region of the terminal (1-based cell coords) instead of centering on the whole terminal; enables embedding a panel in a host TUI (default: undefined, full terminal) */
+  region?: ScreenRegion;
+  /** Non-destructive output for sharing the terminal with a host TUI: skip the full-screen clear and global cursor toggles, and delete only this renderer's own images/cells (default: false) */
+  embedded?: boolean;
   /** Optional sink for internal diagnostic messages */
   onDebug?: (message: string) => void;
 }
@@ -30,6 +34,10 @@ export interface ResolvedRendererOptions {
   enableDiffRendering: boolean;
   colorEnabled: boolean;
   reservedRows: number;
+  /** Confine output to a fixed sub-region of the terminal (1-based cell coords) instead of centering on the whole terminal; enables embedding a panel in a host TUI (default: undefined, full terminal) */
+  region?: ScreenRegion;
+  /** Non-destructive output for sharing the terminal with a host TUI: skip the full-screen clear and global cursor toggles, and delete only this renderer's own images/cells (default: false) */
+  embedded: boolean;
   onDebug?: (message: string) => void;
   /** 256-entry gamma table for frame conversion */
   gammaLUT: Uint8Array;

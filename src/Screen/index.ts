@@ -9,7 +9,7 @@ import {
   getKittyGraphicsSupported,
 } from '../kittyProtocol/index.ts';
 import { detectCellPixelSize, detectCellRenderMode } from '../terminal/index.ts';
-import type { CapturedFrame, Renderer, RenderMode } from '../types.ts';
+import type { CapturedFrame, Renderer, RenderMode, ScreenRegion } from '../types.ts';
 import { AUTO_DISPOSE_SIGNALS, SCREENSHOT_PNG_COMPRESSION } from './consts.ts';
 import type { ScreenOptions, ScreenUpdatableOptions } from './types.ts';
 
@@ -95,13 +95,21 @@ export class Screen {
     this.options = { ...options };
     this.gate = new OutputGate(options.output);
     this.renderer = this.createRenderer();
-    this.gate.write(this.renderer.hideCursor() + this.renderer.clearScreen());
+    const embedded = options.embedded === true;
+    if (!embedded) {
+      // Embedded mode shares the terminal with a host TUI: skip the
+      // destructive init (full-screen clear, global cursor hide). The first
+      // pushFrame paints the region instead.
+      this.gate.write(this.renderer.hideCursor() + this.renderer.clearScreen());
+    }
     this.renderer.setOutputSink((chunk) => this.gate.write(chunk));
-    if (options.autoResize !== false) {
+    // Embedded screens default autoResize/autoDispose off (the host owns
+    // resize and process teardown) but honor an explicit true/false.
+    if (options.autoResize ?? !embedded) {
       this.resizeListener = () => this.handleResize();
       process.on('SIGWINCH', this.resizeListener);
     }
-    if (options.autoDispose !== false) {
+    if (options.autoDispose ?? !embedded) {
       registerAutoDispose(this);
     }
   }
@@ -180,6 +188,18 @@ export class Screen {
     this.renderer.destroy();
     this.renderer = this.createRenderer();
     this.renderer.setOutputSink(sink);
+  }
+
+  /**
+   * Reposition or resize the embedded panel. Clears the old region
+   * non-destructively and re-lays-out into the new one; the next pushFrame
+   * renders the panel in full at the new location.
+   */
+  setRegion(region: ScreenRegion): void {
+    if (this.isDisposed) {
+      return;
+    }
+    this.updateOptions({ region });
   }
 
   getDisplaySize(): { cols: number; rows: number } {

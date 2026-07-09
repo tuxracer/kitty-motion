@@ -77,6 +77,8 @@ selects the kitty renderer.
 | `colorSpace` | `"rgb15" \| "rgb24"` | `"rgb24"` | Pixel format of frames passed to `pushFrame` |
 | `autoResize` | `boolean` | `true` | Recompute display size and centering on terminal resize via a process `SIGWINCH` listener, removed on `dispose()`. Set `false` to call `handleResize()` yourself (e.g. to sequence your own redraw work around it) |
 | `autoDispose` | `boolean` | `true` | Dispose on process exit and on `SIGINT`/`SIGTERM`/`SIGHUP`, restoring the cursor and clearing the image. The process hooks are shared across screens and removed when the last auto-dispose screen is disposed. When the process has its own handler for one of those signals, that handler keeps control of shutdown and disposal happens through the exit hook instead. When the screen's handler is the only one, it disposes and re-raises the signal so the process still terminates with the conventional `128+n` status. Set `false` to call `dispose()` yourself |
+| `region` | `ScreenRegion` | `undefined` | Confine output to a fixed sub-rectangle (`offsetCol`, `offsetRow`, `cols`, `rows`, 1-based cell coordinates) instead of centering on the whole terminal. The video is aspect-fit and centered inside the box. When set, `reservedRows` is ignored. Reposition or resize with `setRegion()` |
+| `embedded` | `boolean` | `false` | Share the terminal with a host TUI. Output is non-destructive (no full-screen clear, no global cursor hide/show, only this Screen's own images or cells removed). When `true`, `autoResize` and `autoDispose` default to `false` unless set explicitly |
 | `scale` | `number` | `2` | Internal render scale (0.25-4x). Higher values increase PNG quantization fidelity at the cost of CPU |
 | `pixelAspectRatio` | `number` | `1.0` | Source pixel aspect ratio (e.g. `8/7` for NES-style non-square pixels). Combined with the terminal's real cell pixel size for font-independent aspect correction |
 | `reservedRows` | `number` | `0` | Terminal rows to exclude from the display area (e.g. for a status line) |
@@ -98,6 +100,7 @@ selects the kitty renderer.
 | `pushFrame(frame: Uint8Array \| Uint16Array)` | Render and send one frame. No-ops if the previous write hasn't drained yet (frames drop, they never queue) |
 | `isWritable(): boolean` | Whether the output stream can accept a frame right now. Check before expensive frame preparation |
 | `handleResize()` | Recompute display size and centering after a terminal resize. Called automatically on `SIGWINCH` unless `autoResize: false` |
+| `setRegion(region: ScreenRegion)` | Move or resize the panel's fixed sub-rectangle. Clears the old region non-destructively, re-runs layout, and paints the new location on the next `pushFrame` |
 | `updateOptions(partial: Partial<ScreenUpdatableOptions>)` | Apply new option values at runtime. Resets diff state, so the next frame renders in full |
 | `getDisplaySize(): { cols: number; rows: number }` | Current on-screen size in terminal cells |
 | `getStatusRow(): number` | First terminal row below the image, for placing a status line |
@@ -211,3 +214,29 @@ underestimates the damaged output region. Pointwise effects keep it valid.
 A full-frame truecolor change (about 3 ms CPU, roughly 530 KB of SGR output
 per frame) is bounded by terminal-side escape parsing rather than renderer
 CPU, so its remaining cost is left alone.
+
+### Embedding in a TUI
+
+A `region` confines the panel to a fixed sub-rectangle instead of centering on
+the whole terminal. The region flows through `computeDisplayLayout`, which fits
+the source framebuffer inside the region's `cols x rows` box (aspect-correct)
+and centers it there, so one layout function serves both full-screen and
+confined placement. When a region is set, `reservedRows` is ignored, because the
+region already fixes the panel's bounds.
+
+`embedded: true` makes the renderers' terminal control non-destructive. Both
+renderers' `clearScreen()` removes only this Screen's own output (`KittyRenderer`
+deletes only its own image ids, `CellRenderer` blanks only its own rows) instead
+of writing `\x1b[2J`, and `hideCursor()`/`showCursor()` become no-ops so the
+global cursor state stays with the host. `Screen` also skips the destructive
+constructor init (no full clear, no cursor hide) and defaults `autoResize` and
+`autoDispose` to `false`, so the host owns resize and process teardown unless the
+caller sets those options. `setRegion(region)` clears the old rectangle
+non-destructively, re-runs `computeDisplayLayout`, and repaints at the new
+location on the next `pushFrame`.
+
+Each `KittyRenderer` (and so each `Screen`) claims a unique image-id range, so
+several panels can coexist in one process without deleting each other's images.
+Because the host draws its own chrome, the reliable pattern is the single
+compositor. kitty-motion owns the video rectangle and the host draws its
+controls in other rows, and the host must not repaint the video rows.

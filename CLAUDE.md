@@ -28,6 +28,15 @@ frame so no region goes stale. On shared-filesystem terminals (probed by
 (named by `frameFiles`) instead of inline base64, and the escape sequence
 carries only the file path.
 
+Both renderers can confine output to a fixed `region` sub-rectangle (1-based
+cell coordinates, aspect-fit and centered inside the box by
+`computeDisplayLayout`) instead of centering on the whole terminal. An
+`embedded` mode makes `Screen` output non-destructive so a host TUI can share
+the terminal, with no full-screen clear, no global cursor hide/show, and each
+Screen deleting only its own images or cells (`KittyRenderer` claims a
+per-instance image-id range so multiple panels can coexist). In embedded mode
+`autoResize` and `autoDispose` default off so the host owns resize and teardown.
+
 Supporting modules: `CellRenderer` (block-glyph fallback rendering with cell-level diffing), `rendererOptions` (shared option resolution and frame-buffer, gamma, and post-processing setup for both renderers), `displayLayout` (centered, aspect-correct cell-grid placement shared by both renderers), `kittyEncode` (scales, PNG-encodes, and chunks frames into complete protocol payloads; runs inside the worker, or on the main thread as a sync fallback), `kittyProtocol` (escape sequences), `dirtyRect` (changed-region bounding boxes for delta frames), `frameFiles` (temp-file naming and stale-file sweep for file-based transmission), `png` (chunk encoding), `fitToTerminal` and `aspect` (sizing), `color` (gamma tables, RGB15 to RGB24), `asciiShapes` (generated per-character shape-vector table, nearest-shape lookup, and contrast step for the ascii render mode), `ansi` (cursor control), `terminal` (cell pixel size detection), `postProcessing` (CRT effects), `helpers` (small shared utilities). Root `src/types.ts` and `src/consts.ts` hold cross-module types (`ColorSpace`, `FrameBuffer`) and constants.
 
 Deeper technical detail (protocol usage, measured optimizations) lives in `docs/TRD.md`.

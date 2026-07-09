@@ -1,6 +1,23 @@
 /** Color space of a decoded framebuffer */
 export type ColorSpace = 'rgb15' | 'rgb24';
 
+/**
+ * A fixed sub-rectangle of the terminal (1-based cell coordinates) that
+ * confines a renderer's output. Output is aspect-fit and centered inside the
+ * box rather than the whole terminal, so a video panel can be embedded within
+ * a host TUI.
+ */
+export interface ScreenRegion {
+  /** 1-based column of the region's left edge */
+  offsetCol: number;
+  /** 1-based row of the region's top edge */
+  offsetRow: number;
+  /** Region width in terminal columns */
+  cols: number;
+  /** Region height in terminal rows */
+  rows: number;
+}
+
 /** Type alias for framebuffer data */
 export type FrameBuffer = Uint8Array | Uint16Array;
 

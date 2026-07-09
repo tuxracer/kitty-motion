@@ -4,11 +4,15 @@ import { KittyEncodeWorkerClient, type WorkerFactory } from '../kittyEncodeWorke
 import { allocateFrameBufferLike, convertFrameToRgb24, frameUnitsPerPixel } from '../color/index.ts';
 import { APC, ST, clearScreen, hideCursor, showCursor } from '../ansi/index.ts';
 import { computeDisplayLayout } from '../displayLayout/index.ts';
-import type { CapturedFrame, ColorSpace, FrameBuffer } from '../types.ts';
+import type { CapturedFrame, ColorSpace, FrameBuffer, ScreenRegion } from '../types.ts';
 import { computeDirtyRect, fullFrameRect, unionRects, type Rect } from '../dirtyRect/index.ts';
 import { unlinkSync } from 'node:fs';
 import { frameFilePath, newFrameFileSession, sweepStaleFrameFiles } from '../frameFiles/index.ts';
-import { getKittyAnimationSupported, getKittyFileTransferSupported } from '../kittyProtocol/index.ts';
+import {
+  buildKittyDeleteSequence,
+  getKittyAnimationSupported,
+  getKittyFileTransferSupported,
+} from '../kittyProtocol/index.ts';
 import { resolveRendererOptions } from '../rendererOptions/index.ts';
 import type { PostProcessingPipeline } from '../postProcessing/index.ts';
 import {
@@ -17,6 +21,7 @@ import {
   DEFAULT_RENDER_SCALE,
   MIN_RENDER_SCALE,
   MAX_RENDER_SCALE,
+  IMAGE_ID_STRIDE,
 } from './consts.ts';
 import type { KittyRendererOptions } from './types.ts';
 
@@ -26,9 +31,18 @@ export * from './types.ts';
 // Kitty graphics protocol renderer
 // https://sw.kovidgoyal.net/kitty/graphics-protocol/
 
+// Next image-id base handed to a new KittyRenderer. Each instance owns
+// IMAGE_ID_STRIDE consecutive ids (for the full-frame double-buffer parity),
+// so multiple renderers or Screens in one process never collide. The probe
+// image ids live at the top of the 32-bit id space (see
+// KITTY_ANIMATION_PROBE_IMAGE_ID), so this range (starting at 1) never reaches
+// them in practice, and a probe collision would be harmless anyway since those
+// images are deleted during capability detection.
+let nextImageIdBase = 1;
+
 export class KittyRenderer {
   private scale: number;  // Scale factor (0.25, 0.5, 1, 2, 3, etc.) - supports both up and downscaling
-  private imageId: number = 1;
+  private imageId: number;
   private frameNumber: number = 0;
   private displayCols: number;
   private displayRows: number;
@@ -84,9 +98,14 @@ export class KittyRenderer {
   // Force the next frame to be a full a=T transmission
   private needsFullTransmit: boolean = true;
   // Image id of the last full transmission (deltas edit this image)
-  private displayedImageId: number = 1;
+  private displayedImageId: number;
   // Alternates full-frame image ids for flicker-free replacement
   private fullFrameParity: number = 0;
+  // Optional sub-region of the terminal to confine output to (undefined = whole terminal)
+  private region?: ScreenRegion;
+  // Non-destructive output for sharing the terminal with a host TUI (skip
+  // full-screen clear and global cursor toggles, delete only own images)
+  private embedded: boolean;
 
   constructor(options: KittyRendererOptions = {}) {
     const common = resolveRendererOptions(options);
@@ -103,6 +122,13 @@ export class KittyRenderer {
     this.postProcessing = common.postProcessing;
     this.prevFrameBuffer = common.prevFrameBuffer;
     this.nativeRgbBuffer = common.nativeRgbBuffer;
+    this.region = common.region;
+    this.embedded = common.embedded;
+
+    // Claim a unique block of image ids so multiple renderers can coexist
+    this.imageId = nextImageIdBase;
+    this.displayedImageId = nextImageIdBase;
+    nextImageIdBase += IMAGE_ID_STRIDE;
 
     this.pngCompressionLevel = options.pngCompressionLevel ?? DEFAULT_PNG_COMPRESSION;
     this.encodeWorkerFactory = options.encodeWorkerFactory;
@@ -175,6 +201,7 @@ export class KittyRenderer {
       sourceHeight: this.sourceHeight,
       pixelAspectRatio: this.pixelAspectRatio,
       reservedRows: this.reservedRows,
+      region: this.region,
     });
   }
 
@@ -390,18 +417,23 @@ export class KittyRenderer {
 
   // Clear screen
   clearScreen(): string {
-    // Delete all images and clear screen
+    // Embedded: delete only this instance's own images (leave sibling panels
+    // and the rest of the terminal untouched)
+    if (this.embedded) {
+      return buildKittyDeleteSequence(this.imageId) + buildKittyDeleteSequence(this.imageId + 1);
+    }
+    // Owned terminal: delete all images and clear the screen
     return `${APC}a=d,d=A,q=2${ST}${clearScreen()}`;
   }
 
-  // Hide cursor
+  // Hide cursor (no-op when embedded: the host owns the cursor)
   hideCursor(): string {
-    return hideCursor();
+    return this.embedded ? '' : hideCursor();
   }
 
-  // Show cursor
+  // Show cursor (no-op when embedded: the host owns the cursor)
   showCursor(): string {
-    return showCursor();
+    return this.embedded ? '' : showCursor();
   }
 
   // Get status row (below the image)

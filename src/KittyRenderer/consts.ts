@@ -1,6 +1,13 @@
 /** Number of initial frames to force full rendering (no diff optimization) */
 export const INITIAL_FULL_RENDER_FRAMES = 5;
 
+/**
+ * Image ids each KittyRenderer instance reserves. Two consecutive ids give
+ * the full-frame double-buffer parity (imageId and imageId + 1) its own pair,
+ * so instances never reuse each other's ids.
+ */
+export const IMAGE_ID_STRIDE = 2;
+
 /** Default internal render scale factor */
 export const DEFAULT_RENDER_SCALE = 2;
 

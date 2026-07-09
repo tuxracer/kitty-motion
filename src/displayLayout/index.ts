@@ -19,10 +19,16 @@ export const computeDisplayLayout = ({
   pixelAspectRatio,
   reservedRows,
   columnsPerCell = 1,
+  region,
 }: DisplayLayoutOptions): DisplayLayout => {
   const { width: termCols, height: termRows } = getTerminalDimensions();
-  const availableRows = termRows - reservedRows;
-  const availableCols = termCols;
+  // Region confines output to a sub-rectangle; otherwise use the whole terminal
+  // (minus reserved rows). reservedRows is ignored inside a region because the
+  // host already carved out the box.
+  const areaCols = region ? region.cols : termCols;
+  const areaRows = region ? region.rows : termRows - reservedRows;
+  const baseCol = region ? region.offsetCol : 1;
+  const baseRow = region ? region.offsetRow : 1;
 
   const measuredCell = getCellPixelSize();
   const cellWidthPx = measuredCell ? measuredCell.width : CELL_WIDTH_PX;
@@ -30,8 +36,8 @@ export const computeDisplayLayout = ({
 
   // Each cell occupies columnsPerCell terminal columns, so it is that many
   // times wider on screen. Widen the aspect cell width to match and cap the
-  // fit to how many such cells fit across the terminal.
-  const availableCellCols = Math.floor(availableCols / columnsPerCell);
+  // fit to how many such cells fit across the area.
+  const availableCellCols = Math.floor(areaCols / columnsPerCell);
   const aspectRatio = kittyGridAspectRatio(
     sourceWidth,
     sourceHeight,
@@ -42,12 +48,12 @@ export const computeDisplayLayout = ({
 
   const { width: cols, height: rows } = fitToTerminal({
     availableCols: availableCellCols,
-    availableRows,
+    availableRows: areaRows,
     aspectRatio,
   });
 
-  const offsetCol = Math.max(1, Math.floor((termCols - cols * columnsPerCell) / 2) + 1);
-  const offsetRow = Math.max(1, Math.floor((availableRows - rows) / 2) + 1);
+  const offsetCol = baseCol + Math.max(0, Math.floor((areaCols - cols * columnsPerCell) / 2));
+  const offsetRow = baseRow + Math.max(0, Math.floor((areaRows - rows) / 2));
 
   return { cols, rows, offsetCol, offsetRow };
 };

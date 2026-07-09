@@ -492,6 +492,135 @@ describe('Screen cell render mode', () => {
   });
 });
 
+describe('Screen embedded and region', () => {
+  const REGION = { offsetCol: 3, offsetRow: 2, cols: 20, rows: 12 };
+
+  it('writes no destructive init sequence in embedded mode', () => {
+    const stream = new FakeStream();
+    const screen = new Screen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'half-block',
+      embedded: true,
+      region: REGION,
+    });
+    const setup = stream.chunks.join('');
+    expect(setup).not.toContain('\x1b[2J'); // no full-screen clear
+    expect(setup).not.toContain('\x1b[?25l'); // no cursor hide
+    screen.dispose();
+  });
+
+  it('writes the destructive init sequence when not embedded', () => {
+    const stream = new FakeStream();
+    const screen = new Screen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'half-block',
+    });
+    const setup = stream.chunks.join('');
+    expect(setup).toContain('\x1b[2J'); // full-screen clear
+    expect(setup).toContain('\x1b[?25l'); // cursor hide
+    screen.dispose();
+  });
+
+  it('adds no SIGWINCH listener in embedded mode by default', () => {
+    const stream = new FakeStream();
+    const before = process.listenerCount('SIGWINCH');
+    const screen = new Screen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'half-block',
+      embedded: true,
+      region: REGION,
+    });
+    expect(process.listenerCount('SIGWINCH')).toBe(before);
+    screen.dispose();
+  });
+
+  it('adds a SIGWINCH listener for a default non-embedded Screen', () => {
+    const stream = new FakeStream();
+    const before = process.listenerCount('SIGWINCH');
+    const screen = new Screen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'half-block',
+    });
+    expect(process.listenerCount('SIGWINCH')).toBe(before + 1);
+    screen.dispose();
+  });
+
+  it('writes no destructive teardown on embedded dispose', () => {
+    const stream = new FakeStream();
+    const screen = new Screen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'half-block',
+      embedded: true,
+      region: REGION,
+    });
+    const beforeDispose = stream.chunks.length;
+    screen.dispose();
+    const teardown = stream.chunks.slice(beforeDispose).join('');
+    expect(teardown).not.toContain('\x1b[2J'); // no full-screen clear
+    expect(teardown).not.toContain('\x1b[?25h'); // no cursor show
+  });
+
+  it('restores the cursor on non-embedded dispose', () => {
+    const stream = new FakeStream();
+    const screen = new Screen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'half-block',
+    });
+    const beforeDispose = stream.chunks.length;
+    screen.dispose();
+    expect(stream.chunks.slice(beforeDispose).join('')).toContain('\x1b[?25h'); // cursor show
+  });
+
+  it('honors explicit autoResize/autoDispose true in embedded mode', () => {
+    const stream = new FakeStream();
+    const winchBefore = process.listenerCount('SIGWINCH');
+    const exitBefore = process.listenerCount('exit');
+    const screen = new Screen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'half-block',
+      embedded: true,
+      region: REGION,
+      autoResize: true,
+      autoDispose: true,
+    });
+    expect(process.listenerCount('SIGWINCH')).toBe(winchBefore + 1); // explicit autoResize wins
+    expect(process.listenerCount('exit')).toBe(exitBefore + 1); // explicit autoDispose wins
+    screen.dispose();
+  });
+
+  it('setRegion re-lays-out into the new region', () => {
+    const stream = new FakeStream();
+    const screen = new Screen({
+      sourceWidth: 40,
+      sourceHeight: 40,
+      output: stream,
+      renderMode: 'half-block',
+      embedded: true,
+      region: { offsetCol: 1, offsetRow: 1, cols: 6, rows: 6 },
+    });
+    const sizeBefore = screen.getDisplaySize();
+    const statusBefore = screen.getStatusRow();
+    screen.setRegion({ offsetCol: 20, offsetRow: 10, cols: 24, rows: 20 });
+    expect(screen.getDisplaySize()).not.toEqual(sizeBefore); // fit grew with the region
+    expect(screen.getStatusRow()).not.toBe(statusBefore); // panel moved down
+    screen.dispose();
+  });
+});
+
 describe('Screen auto-dispose', () => {
   const disposeListenerCounts = (): number[] =>
     ['exit', ...AUTO_DISPOSE_SIGNALS].map((event) => process.listenerCount(event));

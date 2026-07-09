@@ -1,7 +1,7 @@
 import type { EffectOptions } from '../postProcessing/index.ts';
 import type { DrainableStream } from '../OutputGate/index.ts';
 import type { WorkerFactory } from '../kittyEncodeWorkerClient/index.ts';
-import type { CellSampling, ColorDepth, ColorSpace, RenderMode } from '../types.ts';
+import type { CellSampling, ColorDepth, ColorSpace, RenderMode, ScreenRegion } from '../types.ts';
 
 export interface ScreenUpdatableOptions extends EffectOptions {
   /** Internal render scale (0.25-4x); higher values increase PNG quantization fidelity at the cost of CPU (default: `2`) */
@@ -26,6 +26,10 @@ export interface ScreenUpdatableOptions extends EffectOptions {
   limitColors?: ColorDepth;
   /** Cell-mode downsampling strategy. "box" averages each cell's source region in linear light (smooth), "nearest" copies the region's center pixel so hard-edged content stays solid. In ascii mode "nearest" caps the samples per cell so cost stays flat as source resolution grows, while "box" averages the full footprint (the two match on small sources). undefined defaults to "nearest" (default: undefined) */
   cellSampling?: CellSampling;
+  /** Confine output to a fixed sub-region of the terminal (1-based cell coords) instead of centering on the whole terminal; pair with `embedded` to render a video panel inside a host TUI (default: undefined) */
+  region?: ScreenRegion;
+  /** Share the terminal with a host TUI: non-destructive output (no full-screen clear, no global cursor hide/show, deletes only this Screen's own images/cells) and, unless set explicitly, disables autoResize and autoDispose so the host owns resize and teardown (default: false) */
+  embedded?: boolean;
 }
 
 export interface ScreenOptions extends ScreenUpdatableOptions {

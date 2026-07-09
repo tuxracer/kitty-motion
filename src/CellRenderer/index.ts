@@ -38,6 +38,7 @@ import type {
   ColorDepth,
   ColorSpace,
   FrameBuffer,
+  ScreenRegion,
 } from '../types.ts';
 import { RGB24_BYTES_PER_PIXEL } from '../consts.ts';
 import { resolveRendererOptions } from '../rendererOptions/index.ts';
@@ -93,6 +94,8 @@ export class CellRenderer {
   private enableDiffRendering: boolean;
   private colorEnabled: boolean;
   private reservedRows: number;
+  private region?: ScreenRegion;
+  private embedded: boolean;
   private onDebug?: (message: string) => void;
   private colorDepth: ColorDepth;
   private renderMode: CellRenderMode;
@@ -160,6 +163,8 @@ export class CellRenderer {
     this.postProcessing = common.postProcessing;
     this.prevFrameBuffer = common.prevFrameBuffer;
     this.nativeRgbBuffer = common.nativeRgbBuffer;
+    this.region = common.region;
+    this.embedded = common.embedded;
 
     this.colorDepth = options.limitColors ?? detectColorDepth();
     this.renderMode = options.renderMode ?? detectCellRenderMode();
@@ -206,6 +211,7 @@ export class CellRenderer {
         pixelAspectRatio: this.pixelAspectRatio,
         reservedRows: this.reservedRows,
         columnsPerCell: this.columnsPerCell,
+        region: this.region,
       });
     this.cols = layout.cols;
     this.rows = layout.rows;
@@ -269,15 +275,28 @@ export class CellRenderer {
   }
 
   clearScreen(): string {
+    // Embedded mode shares the terminal with a host TUI, so blank only this
+    // renderer's own rows (default-colored spaces) instead of the whole screen
+    if (this.embedded) {
+      let out = SGR_RESET;
+      const width = this.cols * this.columnsPerCell;
+      const blank = ' '.repeat(width);
+      for (let cy = 0; cy < this.rows; cy++) {
+        out += moveCursor(this.offsetRow + cy, this.offsetCol) + blank;
+      }
+      return out;
+    }
     return SGR_RESET + clearScreen();
   }
 
   hideCursor(): string {
-    return hideCursor();
+    // In embedded mode the host owns cursor visibility
+    return this.embedded ? '' : hideCursor();
   }
 
   showCursor(): string {
-    return showCursor();
+    // In embedded mode the host owns cursor visibility
+    return this.embedded ? '' : showCursor();
   }
 
   // Pack a color into a diff-comparable key: palette index (256/16 mode, via

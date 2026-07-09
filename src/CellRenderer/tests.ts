@@ -900,3 +900,93 @@ describe('CellRenderer ascii mode', () => {
     expect(glyphsOf(top.renderRgb24(build(true)))).not.toBe(glyphsOf(bottom.renderRgb24(build(false))));
   });
 });
+
+describe('CellRenderer region and embedded', () => {
+  // Row and column of the first cursor move in a payload (the panel origin)
+  const firstCursorMove = (payload: string): { row: number; col: number } => {
+    const match = payload.match(/\x1b\[(\d+);(\d+)H/u);
+    if (match === null) {
+      throw new Error('payload has no cursor move');
+    }
+    return { row: Number(match[1]), col: Number(match[2]) };
+  };
+
+  it('fits and centers its grid inside a region', () => {
+    const region = { offsetCol: 5, offsetRow: 3, cols: 24, rows: 12 };
+    const renderer = new CellRenderer({
+      sourceWidth: 16,
+      sourceHeight: 24,
+      limitColors: 0,
+      renderMode: 'half-block',
+      region,
+    });
+    const size = renderer.getDisplaySize();
+    expect(size.cols).toBeGreaterThan(0);
+    expect(size.rows).toBeGreaterThan(0);
+    expect(size.cols).toBeLessThanOrEqual(region.cols);
+    expect(size.rows).toBeLessThanOrEqual(region.rows);
+    // The status row sits at or below the region's bottom edge
+    expect(renderer.getStatusRow()).toBeLessThanOrEqual(region.offsetRow + region.rows);
+
+    const payload = renderer.renderRgb24(new Uint8Array(16 * 24 * 3).fill(120));
+    const origin = firstCursorMove(payload);
+    // The grid origin lands at or after the region origin, and inside the box
+    expect(origin.row).toBeGreaterThanOrEqual(region.offsetRow);
+    expect(origin.col).toBeGreaterThanOrEqual(region.offsetCol);
+    expect(origin.row + size.rows).toBeLessThanOrEqual(region.offsetRow + region.rows);
+    expect(origin.col + size.cols).toBeLessThanOrEqual(region.offsetCol + region.cols);
+  });
+
+  it('lets an explicit layout override win over a region', () => {
+    const renderer = new CellRenderer({
+      sourceWidth: 16,
+      sourceHeight: 24,
+      limitColors: 0,
+      renderMode: 'half-block',
+      region: { offsetCol: 5, offsetRow: 3, cols: 24, rows: 12 },
+      layout: { cols: 10, rows: 5, offsetCol: 3, offsetRow: 2 },
+    });
+    expect(renderer.getDisplaySize()).toEqual({ cols: 10, rows: 5 });
+  });
+
+  it('blanks only its own rows in embedded clearScreen (no full-screen clear)', () => {
+    const renderer = new CellRenderer({
+      sourceWidth: 4,
+      sourceHeight: 3,
+      limitColors: 0,
+      renderMode: 'half-block',
+      embedded: true,
+      layout: { cols: 4, rows: 3, offsetCol: 5, offsetRow: 2 },
+    });
+    const cleared = renderer.clearScreen();
+    expect(cleared.startsWith(RESET)).toBe(true);
+    expect(cleared).not.toContain(`${CSI}2J`);
+    // A cursor move to the panel origin followed by a run of blank spaces
+    expect(cleared).toContain(`${CSI}2;5H    `);
+    expect(cleared).toContain(`${CSI}3;5H    `);
+    expect(cleared).toContain(`${CSI}4;5H    `);
+  });
+
+  it('keeps the full-screen clear when not embedded', () => {
+    const renderer = new CellRenderer({
+      sourceWidth: 4,
+      sourceHeight: 3,
+      limitColors: 0,
+      renderMode: 'half-block',
+      layout: { cols: 4, rows: 3, offsetCol: 5, offsetRow: 2 },
+    });
+    expect(renderer.clearScreen()).toContain(`${CSI}2J`);
+  });
+
+  it('yields the cursor to the host in embedded mode', () => {
+    const renderer = new CellRenderer({
+      sourceWidth: 4,
+      sourceHeight: 3,
+      renderMode: 'half-block',
+      embedded: true,
+      layout: { cols: 4, rows: 3, offsetCol: 5, offsetRow: 2 },
+    });
+    expect(renderer.hideCursor()).toBe('');
+    expect(renderer.showCursor()).toBe('');
+  });
+});

@@ -85,6 +85,8 @@ Runnable demos live in [`examples/`](examples/). Run `node examples/bouncing-bal
 | `colorSpace`    | `"rgb24"`, `"rgb15"` | `"rgb24"`   | Pixel format of frames passed to `pushFrame()`      |
 | `autoResize`    | boolean              | `true`      | Recompute layout on terminal resize (SIGWINCH). Set `false` to call `handleResize()` yourself |
 | `autoDispose`   | boolean              | `true`      | Dispose on process exit and SIGINT/SIGTERM/SIGHUP, restoring the terminal. Defers to the app's own signal handlers when present. Set `false` to call `dispose()` yourself |
+| `region`        | `ScreenRegion`, undefined | undefined | Confine output to a fixed sub-rectangle (`offsetCol`, `offsetRow`, `cols`, `rows`, 1-based cells) instead of centering on the whole terminal. The video is aspect-fit and centered inside the box. Overrides `reservedRows`. Reposition later with `setRegion()` |
+| `embedded`      | boolean              | `false`     | Share the terminal with a host TUI. Output is non-destructive (no full-screen clear, no global cursor hide/show, only this Screen's own images or cells removed). Defaults `autoResize` and `autoDispose` to `false` unless you set them |
 | `workerFactory` | function             | real worker | Override encode-worker creation (tests, embedding)  |
 | `onDebug`       | function             | none        | Sink for internal diagnostic messages               |
 
@@ -139,6 +141,38 @@ await writeFile("frame.png", screen.capturePng());
 ```
 
 `capturePng()` always encodes at maximum deflate compression (level 9) for the smallest file, ignoring `pngCompressionLevel` (which only tunes the live render loop). A screenshot is a one-off, so it spends the extra CPU. Before the first `pushFrame()`, the snapshot is a zero-filled (black) image.
+
+## Embedding in a TUI
+
+kitty-motion can render into a fixed rectangle and share the rest of the screen with a host TUI such as [Ink](https://github.com/vadimdemedes/ink). The model is a single compositor. The host reserves a rectangle for the video, passes it as `region` with `embedded: true`, and draws its own controls in the rows outside that rectangle. kitty-motion owns the video rectangle and the host owns everything else.
+
+In embedded mode the output is non-destructive. There is no full-screen clear and no global cursor hide or show, and only this Screen's own images or cells are removed on dispose. The host keeps ownership of stdout for its chrome, so it usually sets `autoResize: false` and `autoDispose: false` and drives resize and teardown itself. Embedded mode defaults both to `false` when you do not set them.
+
+The host must not repaint the video rows. In this fixed-region model kitty-motion and the host each own a disjoint part of the screen, so a host redraw over the video rectangle fights the renderer. (A future placeholder mode will let the host own layout and have the video survive host redraws.)
+
+```typescript
+import { createScreen } from "kitty-motion";
+
+const screen = await createScreen({
+  output: process.stdout,
+  sourceWidth,
+  sourceHeight,
+  embedded: true,
+  region: { offsetCol, offsetRow, cols, rows },
+  autoResize: false,
+  autoDispose: false,
+});
+
+for (const frame of frames) {
+  screen.pushFrame(frame);
+  await nextFrame();
+}
+
+// When the host layout changes, move or resize the panel
+screen.setRegion({ offsetCol, offsetRow, cols, rows });
+```
+
+See [`examples/embedded-panel.ts`](examples/embedded-panel.ts) for a full host integration.
 
 ## Requirements
 

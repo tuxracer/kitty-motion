@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { KittyRenderer } from './index.ts';
+import { KittyRenderer, IMAGE_ID_STRIDE } from './index.ts';
 import { resetKittyAnimationDetection, resetKittyFileTransferDetection } from '../kittyProtocol/index.ts';
 import { isKittyEncodeRequest, type KittyEncodeRequest } from '../kittyEncode/index.ts';
 import { FRAME_FILE_PREFIX } from '../frameFiles/index.ts';
@@ -405,5 +405,85 @@ describe('KittyRenderer file transfer', () => {
     new KittyRenderer({ sourceWidth: 4, sourceHeight: 4, scale: 1, fileTransfer: true }).destroy();
 
     expect(existsSync(stale)).toBe(false);
+  });
+});
+
+describe('KittyRenderer region and embedded', () => {
+  // Parse the leading cursor-move (\x1b[<row>;<col>H) of a full-frame payload
+  const cursorMove = (payload: string): { row: number; col: number } => {
+    const match = /\x1b\[(\d+);(\d+)H/.exec(payload);
+    if (match === null) {
+      throw new Error('payload has no cursor-move sequence');
+    }
+    return { row: Number(match[1]), col: Number(match[2]) };
+  };
+
+  // Extract this instance's base image id from its first full-frame payload
+  // (a=T control carries i=<id>). Must be called only once per renderer: a
+  // later frame flips the double-buffer parity to imageId + 1.
+  const imageIdOf = (r: KittyRenderer): number => {
+    const match = /i=(\d+)/.exec(r.renderRgb24(rgbFrame(4, 4, 100)));
+    if (match === null) {
+      throw new Error('payload has no image id');
+    }
+    return Number(match[1]);
+  };
+
+  it('confines the full-frame cursor move and layout to the region box', () => {
+    const region = { offsetCol: 10, offsetRow: 4, cols: 40, rows: 16 };
+    const r = new KittyRenderer({ sourceWidth: 4, sourceHeight: 4, scale: 1, region, fileTransfer: false });
+    const payload = r.renderRgb24(rgbFrame(4, 4, 100));
+    expect(payload).toContain('a=T'); // first frame is a full transmit
+
+    const { row, col } = cursorMove(payload);
+    expect(row).toBeGreaterThanOrEqual(region.offsetRow);
+    expect(col).toBeGreaterThanOrEqual(region.offsetCol);
+
+    const { cols, rows } = r.getDisplaySize();
+    expect(cols).toBeLessThanOrEqual(region.cols);
+    expect(rows).toBeLessThanOrEqual(region.rows);
+    // Origin plus extent stays inside the box on both axes
+    expect(col + cols).toBeLessThanOrEqual(region.offsetCol + region.cols);
+    expect(row + rows).toBeLessThanOrEqual(region.offsetRow + region.rows);
+    expect(r.getStatusRow()).toBeLessThanOrEqual(region.offsetRow + region.rows);
+  });
+
+  it('deletes only its own images and skips the full clear when embedded', () => {
+    const r = new KittyRenderer({ sourceWidth: 4, sourceHeight: 4, scale: 1, embedded: true, fileTransfer: false });
+    const id = imageIdOf(r);
+    const cleared = r.clearScreen();
+    expect(cleared).toContain(`a=d,d=I,i=${id},`);
+    expect(cleared).toContain(`a=d,d=I,i=${id + 1},`);
+    expect(cleared).not.toContain('\x1b[2J'); // no full-screen wipe
+    expect(cleared).not.toContain('d=A'); // no delete-all
+  });
+
+  it('deletes all images and clears the screen when not embedded', () => {
+    const r = new KittyRenderer({ sourceWidth: 4, sourceHeight: 4, scale: 1 });
+    const cleared = r.clearScreen();
+    expect(cleared).toContain('d=A');
+    expect(cleared).toContain('\x1b[2J');
+  });
+
+  it('gives each instance a distinct image-id base', () => {
+    const r1 = new KittyRenderer({ sourceWidth: 4, sourceHeight: 4, scale: 1, embedded: true, fileTransfer: false });
+    const r2 = new KittyRenderer({ sourceWidth: 4, sourceHeight: 4, scale: 1, embedded: true, fileTransfer: false });
+    const id1 = imageIdOf(r1);
+    const id2 = imageIdOf(r2);
+    expect(id1).not.toBe(id2);
+    // Constructed back to back, so r2's base is exactly one stride past r1's
+    expect(id2).toBe(id1 + IMAGE_ID_STRIDE);
+    // Embedded clears delete each instance's own ids, so they differ too
+    expect(r1.clearScreen()).not.toBe(r2.clearScreen());
+  });
+
+  it('suppresses cursor toggles when embedded but not otherwise', () => {
+    const embedded = new KittyRenderer({ sourceWidth: 4, sourceHeight: 4, scale: 1, embedded: true });
+    expect(embedded.hideCursor()).toBe('');
+    expect(embedded.showCursor()).toBe('');
+
+    const owned = new KittyRenderer({ sourceWidth: 4, sourceHeight: 4, scale: 1 });
+    expect(owned.hideCursor()).not.toBe('');
+    expect(owned.showCursor()).not.toBe('');
   });
 });
