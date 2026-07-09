@@ -30,6 +30,8 @@ export interface KittyFrameMeta {
   transmit: 'full' | 'delta';
   /** Placement mode: "unicode" transmits a virtual placement (U=1) for host-rendered Unicode placeholders instead of a cursor-positioned display. Undefined or "cursor" is the default cursor-positioned behavior. */
   placement?: 'cursor' | 'unicode';
+  /** For a unicode-placement full frame: true (or undefined) creates the virtual placement (a=T,U=1); false re-transmits image data to the existing placement (a=t), the update path for terminals without a=f frame edits (Ghostty). */
+  createPlacement?: boolean;
   /** Region of the source frame to encode, in source pixel coordinates (the whole frame when transmit is 'full') */
   dirtyRect: Rect;
   /** How the payload travels: 'escape' embeds base64 data in the escape sequence (chunked), 'file' writes a temp file and sends its base64 path (t=t, terminal-deleted) */

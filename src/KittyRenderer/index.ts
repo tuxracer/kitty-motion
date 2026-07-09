@@ -264,6 +264,16 @@ export class KittyRenderer {
       this.pendingDirty === null ? meta.dirtyRect : unionRects(this.pendingDirty, meta.dirtyRect);
   }
 
+  // Whether the terminal applies a=f animation frame edits. Kitty does;
+  // Ghostty has no animation protocol, so it must re-transmit the image
+  // instead. The dirtyRects option overrides the probe result.
+  private canEditFrames(): boolean {
+    if (this.dirtyRects !== undefined) {
+      return this.dirtyRects;
+    }
+    return getKittyAnimationSupported() === true;
+  }
+
   // Delta frames require diff state, an exact integer mapping to scaled
   // coordinates, and a terminal that supports animation frame edits
   private canUseDelta(): boolean {
@@ -273,10 +283,7 @@ export class KittyRenderer {
     if (!Number.isInteger(this.scale) || this.scale < 1) {
       return false;
     }
-    if (this.dirtyRects !== undefined) {
-      return this.dirtyRects;
-    }
-    return getKittyAnimationSupported() === true;
+    return this.canEditFrames();
   }
 
   // File medium requires a terminal that answered the shared-filesystem probe
@@ -309,13 +316,17 @@ export class KittyRenderer {
     let currentImageId = this.displayedImageId;
     let previousImageId = this.displayedImageId;
     let deletePrevious = false;
+    // For a unicode full frame: true creates the virtual placement (a=T,U=1),
+    // false re-transmits image data to the existing placement (a=t, Ghostty).
+    let createPlacement: boolean | undefined;
 
     if (transmit === 'full') {
       if (this.placement === 'unicode') {
-        // Single stable id, no double-buffer: re-transmitting to the same id
-        // replaces the image and rebinds the on-screen placeholder cells.
+        // Single stable id, no double-buffer. needsFullTransmit is still set
+        // here (cleared after this call), so it marks the create vs re-transmit.
         currentImageId = this.imageId;
         this.displayedImageId = this.imageId;
+        createPlacement = this.needsFullTransmit;
       } else {
         currentImageId = this.imageId + this.fullFrameParity;
         previousImageId = this.imageId + (1 - this.fullFrameParity);
@@ -344,6 +355,7 @@ export class KittyRenderer {
       deletePrevious,
       transmit,
       placement: this.placement,
+      createPlacement,
       dirtyRect,
       medium,
       filePath,
@@ -379,9 +391,13 @@ export class KittyRenderer {
     // Decide full vs delta and the region to send. Unicode placement never
     // re-transmits except to (re)create the image: a full a=T to a live id
     // deletes its placements, so every non-recreate frame is an a=f edit.
+    // Unicode placement (re)creates the virtual placement on a full transmit,
+    // otherwise updates pixels. With a=f frame edits (Kitty) that update is a
+    // delta; without them (Ghostty) canEditFrames() is false, so every non-
+    // create frame stays 'full' and re-transmits the image (a=t) instead.
     const transmit: 'full' | 'delta' =
       this.placement === 'unicode'
-        ? this.needsFullTransmit
+        ? this.needsFullTransmit || !this.canEditFrames()
           ? 'full'
           : 'delta'
         : isInitialFrame || this.needsFullTransmit || !this.canUseDelta()

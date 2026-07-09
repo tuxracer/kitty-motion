@@ -247,11 +247,16 @@ controls in other rows, and the host must not repaint the video rows.
 
 `placement: "unicode"` removes the single-compositor restriction by handing
 layout to the host. The image is transmitted once as a virtual placement
-(`a=T,U=1` with `c`/`r` from the region grid and no cursor move), and after
-that only pixels update, through the existing dirty-rect `a=f` frame edits. A
-full `a=T` re-transmit to the same id would delete its placements, so the
-renderer never re-transmits. It uses a single stable image id (no
-double-buffer). The host renders the placeholder cells returned by
+(`a=T,U=1` with `c`/`r` from the region grid and no cursor move), then only
+pixels update. How they update depends on the terminal. Kitty supports the
+animation protocol, so updates go through the existing dirty-rect `a=f` frame
+edits (a full `a=T` re-transmit to the same id would delete its placements, so
+the renderer never uses one to update on Kitty). Ghostty has no animation
+protocol, so `detectKittyAnimationSupport()` returns false and the renderer
+instead re-transmits the whole image to the same id with `a=t`, which Ghostty
+composites into the existing placement in place (no delete, so no flicker).
+Either way it uses a single stable image id (no double-buffer). The host renders
+the placeholder cells returned by
 `getPlaceholderRows()` as ordinary text, and the terminal fills whichever cells
 carry them with the video, so a host redraw that reprints the text re-anchors
 the placement. Each placeholder cell is `U+10EEEE` plus row and column

@@ -399,6 +399,13 @@ export class KittyFrameEncoder {
   // (chunking m= for escapes, t=t for files)
   private buildFullControl(meta: KittyFrameMeta, tail: string): string {
     if (meta.placement === 'unicode') {
+      if (meta.createPlacement === false) {
+        // Terminal without a=f frame edits (Ghostty): re-transmit the image
+        // data to the same id. The existing virtual placement re-composites in
+        // place, so the video updates without deleting and recreating the
+        // placement (no flicker) and without a cursor move.
+        return `a=t,f=100,i=${meta.currentImageId},q=2,${tail}`;
+      }
       // Virtual placement (U=1): the image is composited over host-rendered
       // placeholder cells, not displayed at the cursor. c/r give the cell grid.
       return `a=T,U=1,f=100,i=${meta.currentImageId},q=2,c=${meta.displayCols},r=${meta.displayRows},${tail}`;

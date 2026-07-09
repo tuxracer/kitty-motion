@@ -209,6 +209,24 @@ describe('KittyFrameEncoder', () => {
     expect(/\x1b\[\d+;\d+H/.test(payload)).toBe(false); // no cursor-position escape
   });
 
+  it('re-transmits image data with a=t (not a=T,U=1) when createPlacement is false', () => {
+    const meta = makeMeta({
+      placement: 'unicode',
+      transmit: 'full',
+      createPlacement: false,
+      currentImageId: 7,
+    });
+    const payload = new KittyFrameEncoder().encode(makeFrame(), meta);
+
+    const [first] = parseEscapes(payload);
+    expect(first.control).toContain('a=t,'); // data-only re-transmit to the same id
+    expect(first.control).toContain('i=7');
+    expect(first.control).not.toContain('U=1'); // does not recreate the placement
+    expect(first.control).not.toContain('a=T');
+    expect(payload).not.toContain('a=d');
+    expect(/\x1b\[\d+;\d+H/.test(payload)).toBe(false); // no cursor-position escape
+  });
+
   it('keeps the cursor move and delete for the default cursor placement', () => {
     const meta = makeMeta({
       placement: 'cursor',

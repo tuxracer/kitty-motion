@@ -526,15 +526,32 @@ describe('KittyRenderer unicode placement', () => {
     expect(hasCursorMove(payload)).toBe(false); // host placeholder cells position it
   });
 
-  it('edits pixels in place with a=f (never re-transmits) after the initial create', () => {
-    const r = unicodeRenderer();
+  it('edits pixels in place with a=f after the create when the terminal supports frame edits', () => {
+    // dirtyRects: true forces frame-edit support on (the animation probe is
+    // unresolved in tests, so it would otherwise be treated as unsupported).
+    const r = unicodeRenderer({ dirtyRects: true });
     const base = rgbFrame(8, 8, 100);
     r.renderRgb24(base); // initial full create
 
     const payload = r.renderRgb24(withPixel(base, 8, 5, 3));
     expect(payload).toContain('a=f');
-    expect(payload).not.toContain('U=1'); // re-transmitting would delete the placement
+    expect(payload).not.toContain('U=1'); // a full re-transmit would delete the placement
     expect(payload).not.toContain('a=T');
+    expect(hasCursorMove(payload)).toBe(false);
+  });
+
+  it('re-transmits with a=t (no a=f) after the create when frame edits are unsupported', () => {
+    // dirtyRects: false models a terminal without the animation protocol
+    // (Ghostty): every non-create frame re-transmits image data to the same id.
+    const r = unicodeRenderer({ dirtyRects: false });
+    const base = rgbFrame(8, 8, 100);
+    r.renderRgb24(base); // initial full create (a=T,U=1)
+
+    const payload = r.renderRgb24(withPixel(base, 8, 5, 3));
+    expect(payload).toContain('a=t,'); // data re-transmit to the same id
+    expect(payload).not.toContain('a=f'); // no animation frame edit
+    expect(payload).not.toContain('U=1'); // not recreating the placement
+    expect(payload).not.toContain('a=T'); // not a create-and-display
     expect(hasCursorMove(payload)).toBe(false);
   });
 
