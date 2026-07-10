@@ -92,7 +92,7 @@ selects the kitty renderer.
 | `placement` | `"cursor" \| "unicode"` | `"cursor"` | Kitty placement model. `"cursor"` displays the image at a cursor position. `"unicode"` transmits a virtual placement (`U=1`) and animates it via frame edits, so a host TUI owns layout and the video survives host redraws. Kitty and Ghostty only, ignored on the cell-glyph fallback. Pair with `getPlaceholderRows()` |
 | `workerFactory` | `WorkerFactory` | real worker | Override worker creation (tests, embedding) |
 | `onDebug` | `(message: string) => void` | (none) | Optional sink for internal diagnostic messages |
-| ...`EffectOptions` | | | `gamma`, `scanlines`, `saturation`, `brightness`, `contrast`, `vignette`, `bloom`, `bloomThreshold`, `ntsc`, `curvature`, `chromaticAberration`: CRT-style post-processing, all default off/neutral |
+| ...`EffectOptions` | | | Color grading (`gamma`, `saturation`, `brightness`, `contrast`) and CRT-style effects (`scanlines`, `vignette`, `bloom`, `bloomThreshold`, `ntsc`, `curvature`, `chromaticAberration`), all default off/neutral |
 
 ### Methods
 
@@ -131,7 +131,7 @@ For building a custom pipeline instead of using `Screen`:
 - `buildPlaceholderRows`, `encodeImageIdFg`, `PLACEHOLDER_CHAR`, `PlaceholderError`, `isPlaceholderError`, `PlaceholderErrorCode`: build the `U+10EEEE` placeholder cells for Kitty Unicode placement (one string per grid row, image id encoded in the foreground color) and the typed error they can throw
 - `computeDirtyRect`, `unionRects`, `fullFrameRect`, `isFullFrameRect`, `Rect`: changed-region bounding-box helpers behind dirty-rect delta rendering
 - `OutputGate`, `DrainableStream`: backpressure-aware writable wrapper that drops frames instead of queueing them
-- `PostProcessingPipeline`, `EffectOptions`: the CRT-style post-processing effects pipeline
+- `PostProcessingPipeline`, `EffectOptions`: the post-processing effects pipeline (color grading plus CRT-style effects)
 - `detectColorDepth`, `ColorDepth`: environment-based SGR color depth detection
 - `detectCellRenderMode`, `CellRenderMode`: environment-based cell render-mode detection (Terminal.app gets `cell-background` because its font-drawn block glyphs do not tile the cell)
 - `rgbToEmoji`, `buildEmojiLUT`, `EMOJI_COLORS`, `EmojiColor`: the fixed nine-color emoji palette and its nearest-color quantizer, used by the opt-in `emoji` render mode

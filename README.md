@@ -15,7 +15,7 @@ Every optimization is probed at runtime and falls back automatically. The same c
 
 Terminals without Kitty graphics (VS Code's integrated terminal, tmux, CI logs) fall back to colored half-block characters with the same cell-level diffing and auto-detected color depth (truecolor, 256, or 16). Every terminal shows motion instead of an error.
 
-Optional CRT-style post-processing covers gamma, saturation, brightness, and contrast, plus scanlines, bloom, vignette, screen curvature, chromatic aberration, and NTSC artifacts. Pass effects to `createScreen()` or change them mid-playback with `updateOptions()`. They apply in both render paths.
+Optional post-processing covers color grading (gamma, saturation, brightness, and contrast) plus CRT-style effects (scanlines, bloom, vignette, screen curvature, chromatic aberration, and NTSC artifacts). Pass effects to `createScreen()` or change them mid-playback with `updateOptions()`. They apply in both render paths.
 
 Full API reference, benchmarks, and design rationale: [docs/TRD.md](docs/TRD.md).
 
