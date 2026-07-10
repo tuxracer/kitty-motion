@@ -70,39 +70,39 @@ Runnable demos live in [`examples/`](examples/). Run `node examples/bouncing-bal
 
 `createScreen()` accepts the options below. Everything except the creation-only group can also be changed mid-playback with `screen.updateOptions()`.
 
-`createScreen()` runs the async capability probes (graphics support, dirty-rect, file transfer, cell pixel size) before construction. To control when the terminal handshake happens, run the exported `detect*` probes yourself first (their results are cached, so the probes inside `createScreen()` become free), or construct synchronously with `new Screen(options)`.
+`createScreen()` runs the async capability probes before construction. To control when the terminal handshake happens, run the exported `detect*` probes yourself first (results are cached), or construct synchronously with `new Screen(options)`. Details in the TRD's [API reference](docs/TRD.md#screen-api-reference).
 
 ### Creation only
 
-| Option          | Values               | Default     | Description                                         |
-| --------------- | -------------------- | ----------- | --------------------------------------------------- |
-| `sourceWidth`   | number               | required    | Width of the source framebuffer in pixels           |
-| `sourceHeight`  | number               | required    | Height of the source framebuffer in pixels          |
-| `output`        | writable stream      | required    | Sink for encoded frames, typically `process.stdout` |
-| `colorSpace`    | `"rgb24"`, `"rgb15"` | `"rgb24"`   | Pixel format of frames passed to `pushFrame()`      |
-| `autoResize`    | boolean              | `true`      | Recompute layout on terminal resize (SIGWINCH). Set `false` to call `handleResize()` yourself |
-| `autoDispose`   | boolean              | `true`      | Dispose on process exit and SIGINT/SIGTERM/SIGHUP, restoring the terminal. Defers to the app's own signal handlers when present. Set `false` to call `dispose()` yourself |
-| `region`        | `ScreenRegion`, undefined | undefined | Confine output to a fixed sub-rectangle (`offsetCol`, `offsetRow`, `cols`, `rows`, 1-based cells), aspect-fit and centered inside the box, instead of centering on the whole terminal. Overrides `reservedRows`. Reposition with `setRegion()` |
-| `embedded`      | boolean              | `false`     | Share the terminal with a host TUI. Output is non-destructive (no full-screen clear, no global cursor hide/show, only this Screen's own images or cells removed). Defaults `autoResize` and `autoDispose` to `false` unless set |
-| `workerFactory` | function             | real worker | Override encode-worker creation (tests, embedding)  |
-| `onDebug`       | function             | none        | Sink for internal diagnostic messages               |
+| Option          | Values                    | Default     | Description                                                                                                                                                                                        |
+| --------------- | ------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sourceWidth`   | number                    | required    | Width of the source framebuffer in pixels                                                                                                                                                          |
+| `sourceHeight`  | number                    | required    | Height of the source framebuffer in pixels                                                                                                                                                         |
+| `output`        | writable stream           | required    | Sink for encoded frames, typically `process.stdout`                                                                                                                                                |
+| `colorSpace`    | `"rgb24"`, `"rgb15"`      | `"rgb24"`   | Pixel format of frames passed to `pushFrame()`                                                                                                                                                     |
+| `autoResize`    | boolean                   | `true`      | Recompute layout on terminal resize (SIGWINCH). Set `false` to call `handleResize()` yourself                                                                                                      |
+| `autoDispose`   | boolean                   | `true`      | Dispose on process exit and SIGINT/SIGTERM/SIGHUP, restoring the terminal. Set `false` to call `dispose()` yourself                                                                                |
+| `region`        | `ScreenRegion`, undefined | undefined   | Confine output to a fixed sub-rectangle (`offsetCol`, `offsetRow`, `cols`, `rows`, 1-based cells), aspect-fit and centered inside the box. Overrides `reservedRows`. Reposition with `setRegion()` |
+| `embedded`      | boolean                   | `false`     | Share the terminal with a host TUI. Output becomes non-destructive and `autoResize`/`autoDispose` default to `false`. See [Embedding in a TUI](#embedding-in-a-tui)                                |
+| `workerFactory` | function                  | real worker | Override encode-worker creation (tests, embedding)                                                                                                                                                 |
+| `onDebug`       | function                  | none        | Sink for internal diagnostic messages                                                                                                                                                              |
 
 ### Rendering
 
-| Option                | Values                                    | Default | Description                                                                                                                                                                                                                                      |
-| --------------------- | ----------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `scale`               | 0.25 to 4                                 | `2`     | Internal render scale. Higher values increase PNG quantization fidelity at the cost of CPU                                                                                                                                                       |
-| `pixelAspectRatio`    | number                                    | `1.0`   | Source pixel aspect ratio, e.g. `8/7` for NES-style non-square pixels                                                                                                                                                                            |
-| `reservedRows`        | integer >= 0                              | `0`     | Terminal rows excluded from the display area, e.g. for a status line                                                                                                                                                                             |
-| `pngCompressionLevel` | 1 to 9                                    | `5`     | Deflate level for PNG encoding                                                                                                                                                                                                                   |
-| `colorEnabled`        | boolean                                   | `true`  | When `false`, renders in grayscale                                                                                                                                                                                                               |
-| `enableDiffRendering` | boolean                                   | `true`  | Skip re-encoding frames pixel-identical to the previous frame                                                                                                                                                                                    |
-| `dirtyRects`          | boolean, undefined                        | probe   | Dirty-rect delta frames. `undefined` follows `detectKittyAnimationSupport()`, `true`/`false` overrides. Deltas also require `enableDiffRendering` and an integer `scale` of 1 or more                                                            |
-| `fileTransfer`        | boolean, undefined                        | probe   | File-based payload transmission. `undefined` follows `detectKittyFileTransferSupport()`, `true`/`false` forces                                                                                                                                   |
-| `renderMode`          | `"kitty"`, `"half-block"`, `"cell-background"`, `"emoji"`, `"ascii"`, undefined | probe | `"kitty"` uses the graphics protocol. `"half-block"` and `"cell-background"` use the block-glyph renderer (2 pixels per cell via U+2580, or 1 via background-colored spaces). `"emoji"` picks one of nine emoji squares per cell by nearest color, `"ascii"` picks one printable character per cell by nearest shape colorized by average color (both opt-in). `undefined` follows the graphics probe, then auto-detects cell mode from `TERM_PROGRAM` (Terminal.app gets `"cell-background"`) |
-| `limitColors`         | `0`, `16`, `256`, undefined               | auto    | Cell-mode color depth, `0` means truecolor. `undefined` auto-detects from `COLORTERM`/`TERM`                                                                                                                                                     |
-| `cellSampling`        | `"box"`, `"nearest"`, undefined           | nearest | Cell-mode downsampling. `"nearest"` copies each cell's center pixel so hard edges stay solid, `"box"` averages the region in linear light for smoother gradients. In `"ascii"` mode `"nearest"` caps samples per cell so cost stays flat as source resolution grows, while `"box"` averages the full footprint. `undefined` defaults to `"nearest"` |
-| `placement`           | `"cursor"`, `"unicode"`                    | `"cursor"` | `"cursor"` displays the image at a cursor position. `"unicode"` transmits a virtual placement and animates it via frame edits, so a host TUI owns layout and the video survives host redraws. Kitty and Ghostty only, ignored on the cell fallback. Pair with `getPlaceholderRows()` |
+| Option                | Values                                                                          | Default    | Description                                                                                                                                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scale`               | 0.25 to 4                                                                       | `2`        | Internal render scale. Higher values increase PNG quantization fidelity at the cost of CPU                                                                                                                                                                                                |
+| `pixelAspectRatio`    | number                                                                          | `1.0`      | Source pixel aspect ratio, e.g. `8/7` for NES-style non-square pixels                                                                                                                                                                                                                     |
+| `reservedRows`        | integer >= 0                                                                    | `0`        | Terminal rows excluded from the display area, e.g. for a status line                                                                                                                                                                                                                      |
+| `pngCompressionLevel` | 1 to 9                                                                          | `5`        | Deflate level for PNG encoding                                                                                                                                                                                                                                                            |
+| `colorEnabled`        | boolean                                                                         | `true`     | When `false`, renders in grayscale                                                                                                                                                                                                                                                        |
+| `enableDiffRendering` | boolean                                                                         | `true`     | Skip re-encoding frames pixel-identical to the previous frame                                                                                                                                                                                                                             |
+| `dirtyRects`          | boolean, undefined                                                              | probe      | Dirty-rect delta frames. `undefined` follows `detectKittyAnimationSupport()`, `true`/`false` overrides. Deltas also require `enableDiffRendering` and an integer `scale` of 1 or more                                                                                                     |
+| `fileTransfer`        | boolean, undefined                                                              | probe      | File-based payload transmission. `undefined` follows `detectKittyFileTransferSupport()`, `true`/`false` forces                                                                                                                                                                            |
+| `renderMode`          | `"kitty"`, `"half-block"`, `"cell-background"`, `"emoji"`, `"ascii"`, undefined | probe      | `"kitty"` forces the graphics protocol, `"half-block"` and `"cell-background"` force the block-glyph fallback, `"emoji"` and `"ascii"` are opt-in glyph modes (nearest-color emoji square, or nearest-shape ASCII character). `undefined` follows the graphics probe, then `TERM_PROGRAM` |
+| `limitColors`         | `0`, `16`, `256`, undefined                                                     | auto       | Cell-mode color depth, `0` means truecolor. `undefined` auto-detects from `COLORTERM`/`TERM`                                                                                                                                                                                              |
+| `cellSampling`        | `"box"`, `"nearest"`, undefined                                                 | nearest    | Cell-mode downsampling. `"nearest"` keeps hard edges solid, `"box"` averages in linear light for smoother gradients                                                                                                                                                                       |
+| `placement`           | `"cursor"`, `"unicode"`                                                         | `"cursor"` | `"unicode"` hands layout to a host TUI via placeholder text instead of positioning the image at the cursor. Kitty and Ghostty only. See [Unicode placeholder mode](#unicode-placeholder-mode)                                                                                             |
 
 ### Post-processing effects
 
@@ -138,15 +138,9 @@ const { data, width, height } = screen.captureRgb();
 await writeFile("frame.png", screen.capturePng());
 ```
 
-`capturePng()` always encodes at maximum deflate compression (level 9), ignoring `pngCompressionLevel`, since a screenshot is a one-off. Before the first `pushFrame()`, the snapshot is black.
-
 ## Embedding in a TUI
 
-kitty-motion can render into a fixed rectangle and share the rest of the screen with a host TUI such as [Ink](https://github.com/vadimdemedes/ink). The host reserves a rectangle, passes it as `region` with `embedded: true`, and draws its own controls outside it. kitty-motion owns the video rectangle, the host owns everything else.
-
-In embedded mode output is non-destructive (no full-screen clear, no global cursor hide or show, only this Screen's own images or cells removed on dispose). The host keeps stdout for its chrome, so it usually sets `autoResize: false` and `autoDispose: false` and drives resize and teardown itself. Embedded mode defaults both to `false` when you do not set them.
-
-The host must not repaint the video rows, since each side owns a disjoint part of the screen. The Unicode placeholder mode below lifts this restriction.
+kitty-motion can render into a fixed rectangle and share the rest of the screen with a host TUI such as [Ink](https://github.com/vadimdemedes/ink). The host reserves a rectangle, passes it as `region` with `embedded: true`, and draws its own controls outside it. Output becomes non-destructive, `autoResize` and `autoDispose` default to `false`, and the host must not repaint the video rows (the Unicode placeholder mode below lifts that restriction). Mechanics and rationale are in the TRD's [Embedding in a TUI](docs/TRD.md#embedding-in-a-tui).
 
 ```typescript
 import { createScreen } from "kitty-motion";
@@ -157,14 +151,7 @@ const screen = await createScreen({
   sourceHeight,
   embedded: true,
   region: { offsetCol, offsetRow, cols, rows },
-  autoResize: false,
-  autoDispose: false,
 });
-
-for (const frame of frames) {
-  screen.pushFrame(frame);
-  await nextFrame();
-}
 
 // When the host layout changes, move or resize the panel
 screen.setRegion({ offsetCol, offsetRow, cols, rows });
@@ -174,36 +161,22 @@ See [`examples/embedded-panel.ts`](examples/embedded-panel.ts) for a full integr
 
 ### Unicode placeholder mode
 
-Unicode placement drops the single-compositor rule, so the host owns layout and the video survives the host's redraws. Pass `placement: 'unicode'` and the image is transmitted once as a Kitty virtual placement. Instead of positioning the image itself, kitty-motion hands you placeholder text through `getPlaceholderRows()`, one string per grid row, and your framework draws it wherever it places the panel (in Ink, one `<Text>` per line). The terminal fills those cells with the video, so a host redraw that reprints the text just re-anchors the video. Kitty and Ghostty only. On the block-glyph fallback the option is ignored and `getPlaceholderRows()` returns an empty array.
+With `placement: "unicode"` the image is transmitted once as a Kitty virtual placement, and instead of positioning it kitty-motion hands you placeholder text through `getPlaceholderRows()`, one string per grid row. Your framework draws those strings wherever it places the panel (in Ink, one `<Text>` per line), and the terminal fills the cells with the video, so a host redraw just re-anchors it. Kitty and Ghostty only. On the block-glyph fallback the option is ignored and `getPlaceholderRows()` returns an empty array.
 
-In unicode mode `region.cols`/`region.rows` set the grid and the offset is unused, since the host positions the text. Re-read `getPlaceholderRows()` after a resize or `setRegion()`, because the grid size can change.
+Only `region.cols`/`region.rows` matter (the host positions the text). Re-read `getPlaceholderRows()` after a resize or `setRegion()`, because the grid size can change.
 
 ```typescript
-import { createScreen } from "kitty-motion";
-
 const screen = await createScreen({
-  output: process.stdout,
-  sourceWidth,
-  sourceHeight,
+  // ...the embedded options above, plus:
   placement: "unicode",
-  embedded: true,
-  region: { offsetCol, offsetRow, cols, rows },
-  autoResize: false,
-  autoDispose: false,
 });
 
-// Draw one text line per grid row wherever your framework lays out the panel.
+// Draw one string per grid row wherever your framework lays out the panel.
 // In Ink, render each string as its own <Text>.
-const placeholderRows = screen.getPlaceholderRows();
-drawPlaceholderText(placeholderRows);
-
-for (const frame of frames) {
-  screen.pushFrame(frame);
-  await nextFrame();
-}
+drawPlaceholderText(screen.getPlaceholderRows());
 ```
 
-See [`examples/ink-video-player/`](examples/ink-video-player/) for a full Ink integration (Ink controls around a kitty-motion video panel). Run it with `pnpm example:ink` on a Kitty or Ghostty terminal.
+See [`examples/ink-video-player/`](examples/ink-video-player/) for a full Ink integration. Run it with `pnpm example:ink` on a Kitty or Ghostty terminal.
 
 ## Requirements
 
