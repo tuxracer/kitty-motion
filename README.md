@@ -231,7 +231,7 @@ integration (Ink controls around a kitty-motion video panel). Run it with
 - Node.js >= 24
 - A terminal that supports the Kitty graphics protocol (e.g. [Kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org/), [WezTerm](https://wezterm.org/)) for full-quality pixel rendering. Any color terminal works via the block-glyph fallback
 - Run directly in the terminal, not under tmux or GNU screen. Multiplexers don't pass the graphics protocol through, which forces the block-glyph fallback, and they usually cap colors at 256 instead of truecolor
-- macOS Terminal.app works but is not recommended. It has no Kitty graphics support, and it draws block characters as ordinary font glyphs that don't tile the cell, so the half-block fallback shows seams there. kitty-motion detects Terminal.app and switches to one background-colored pixel per cell, which avoids the seams but halves the vertical resolution
+- macOS Terminal.app works but is not recommended. With no Kitty graphics support and font glyphs that leave seams in the half-block fallback, kitty-motion renders one background-colored pixel per cell there, avoiding the seams at half the vertical resolution
 
 ## License
 
