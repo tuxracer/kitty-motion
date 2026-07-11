@@ -160,6 +160,13 @@ Level 5 roughly halves the payload versus level 1 for well under a millisecond o
 
 Standard PNG encoders apply per-scanline filters (Sub, Up, Average, Paeth) before deflate, because they exploit numeric correlation between neighboring pixel values. kitty-motion's indexed-color path deflates palette indices, not raw color values, and palette index assignment is arbitrary (the Nth unique color encountered gets index N). Two adjacent pixels that are visually similar colors can land on palette indices 3 and 200, so filters that predict "this byte is close to its neighbor" have nothing meaningful to predict. Benchmarking confirmed this. Adaptive min-SAD filtering at compression level 6 produced 3.9 KB average payloads, larger than the 3.4 KB with no filtering at all. Filtering was left out entirely rather than spending CPU on a transform that makes output worse.
 
+A cross-frame palette-overflow memo (skip the indexed attempt after
+consecutive overflows on truecolor content, retry periodically) was tried and
+reverted. The palette scan aborts as soon as it finds a 257th unique color,
+which on truecolor content happens within the first rows, so the "doomed"
+scan measured 0.0024 ms per frame at 640x360 (about 0.02 percent of encode
+time) and the memo produced no measurable win.
+
 ### Why frames drop instead of queueing
 
 `OutputGate` checks the return value of `stream.write()`. When it's `false` (the OS write buffer is full, typically a slow terminal, an SSH link, or a pipe with a slow reader), the gate marks itself blocked and drops every subsequent `pushFrame` call until a `drain` event fires. There is no queue and no buffering of pending frames. For motion video, a frame that's a few hundred milliseconds late is worse than no frame at all. An unbounded queue would only grow the latency between what's happening in your simulation and what's on screen. Dropping keeps the display honest. It always shows either the current state or nothing, never a backlog.
