@@ -4,7 +4,7 @@ import { KittyEncodeWorkerClient, type WorkerFactory } from '../kittyEncodeWorke
 import { allocateFrameBufferLike, convertFrameToRgb24, frameUnitsPerPixel } from '../color/index.ts';
 import { APC, ST, clearScreen, hideCursor, showCursor } from '../ansi/index.ts';
 import { computeDisplayLayout } from '../displayLayout/index.ts';
-import type { CapturedFrame, ColorSpace, FrameBuffer, ScreenRegion } from '../types.ts';
+import type { CapturedFrame, ColorSpace, FrameBuffer, KittyCompression, ScreenRegion } from '../types.ts';
 import { computeDirtyRect, fullFrameRect, unionRects, type Rect } from '../dirtyRect/index.ts';
 import { unlinkSync } from 'node:fs';
 import { frameFilePath, newFrameFileSession, sweepStaleFrameFiles } from '../frameFiles/index.ts';
@@ -94,6 +94,8 @@ export class KittyRenderer {
   private dirtyRects?: boolean;
   // File-transfer override: undefined = follow the shared-filesystem probe
   private fileTransfer?: boolean;
+  // Payload format override: undefined = auto (raw on the file medium, PNG inline)
+  private compression?: KittyCompression;
   // Per-renderer token and counter for collision-free frame file names
   private fileSession: string = newFrameFileSession();
   private fileSeq: number = 0;
@@ -142,6 +144,7 @@ export class KittyRenderer {
     this.encodeWorkerFactory = options.encodeWorkerFactory;
     this.dirtyRects = options.dirtyRects;
     this.fileTransfer = options.fileTransfer;
+    this.compression = options.compression;
     this.placement = options.placement ?? 'cursor';
     if (options.fileTransfer !== false) {
       // Remove frame files leaked by crashed processes before creating new ones
@@ -364,6 +367,7 @@ export class KittyRenderer {
       createPlacement,
       dirtyRect,
       medium,
+      compression: this.compression,
       filePath,
     };
   }

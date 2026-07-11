@@ -137,12 +137,13 @@ export class Screen {
       };
       return new KittyRenderer(rendererOptions);
     }
-    const { scale, pngCompressionLevel, dirtyRects, fileTransfer, placement, ...cellOptions } = rest;
+    const { scale, pngCompressionLevel, dirtyRects, fileTransfer, compression, placement, ...cellOptions } = rest;
     const kittyOnly: ReadonlyArray<[name: string, value: unknown]> = [
       ['scale', scale],
       ['pngCompressionLevel', pngCompressionLevel],
       ['dirtyRects', dirtyRects],
       ['fileTransfer', fileTransfer],
+      ['compression', compression],
       ['placement', placement],
       ['workerFactory', workerFactory],
     ];

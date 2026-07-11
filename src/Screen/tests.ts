@@ -383,10 +383,12 @@ describe('Screen cell render mode', () => {
       renderMode: 'half-block',
       dirtyRects: true,
       pngCompressionLevel: 9,
+      compression: 'none',
       workerFactory: NO_WORKER,
       onDebug: (message) => messages.push(message),
     });
     expect(messages.some((m) => m.includes('ignoring') && m.includes('dirtyRects'))).toBe(true);
+    expect(messages.some((m) => m.includes('ignoring') && m.includes('compression'))).toBe(true);
     screen.dispose();
   });
 

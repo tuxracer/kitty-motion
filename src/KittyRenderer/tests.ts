@@ -719,6 +719,22 @@ describe('KittyRenderer dilated deltas under bounded spread effects', () => {
   });
 });
 
+describe('KittyRenderer compression option', () => {
+  it('passes the compression option through to frame metadata', () => {
+    const worker = new FakeEncodeWorker();
+    const r = new KittyRenderer({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      scale: 1,
+      compression: 'zlib',
+      encodeWorkerFactory: () => worker,
+    });
+    r.setOutputSink(() => true);
+    r.renderRgb24(rgbFrame(4, 4, 100));
+    expect(worker.requests[0].meta.compression).toBe('zlib');
+  });
+});
+
 describe('delta default policy', () => {
   // Seed the animation-support cache to true via the env fast path
   const seedAnimationSupported = async (): Promise<void> => {

@@ -4,6 +4,7 @@
  * Every frame is fully self-describing so the encoder (and the worker thread
  * wrapping it) never needs configuration sync when settings change at runtime.
  */
+import type { KittyCompression } from '../types.ts';
 import type { Rect } from '../dirtyRect/index.ts';
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -32,6 +33,8 @@ export interface KittyFrameMeta {
   placement?: 'cursor' | 'unicode';
   /** For a unicode-placement full frame: true (or undefined) creates the virtual placement (a=T,U=1); false re-transmits image data to the existing placement (a=t), the update path for terminals without a=f frame edits (Ghostty). */
   createPlacement?: boolean;
+  /** Payload format override: forces one format on every medium. Undefined picks per medium: raw pixels ('none') on the file medium, PNG inline */
+  compression?: KittyCompression;
   /** Region of the source frame to encode, in source pixel coordinates (the whole frame when transmit is 'full') */
   dirtyRect: Rect;
   /** How the payload travels: 'escape' embeds base64 data in the escape sequence (chunked), 'file' writes a temp file and sends its base64 path (t=t, terminal-deleted) */
@@ -69,6 +72,7 @@ export const isKittyEncodeResponse = (value: unknown): value is KittyEncodeRespo
   isString(value.payload) &&
   value.rgb instanceof ArrayBuffer;
 
+export type { KittyCompression } from '../types.ts';
 export type { Rect } from '../dirtyRect/index.ts';
 
 /**

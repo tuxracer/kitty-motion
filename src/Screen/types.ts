@@ -1,7 +1,7 @@
 import type { EffectOptions } from '../postProcessing/index.ts';
 import type { DrainableStream } from '../OutputGate/index.ts';
 import type { WorkerFactory } from '../kittyEncodeWorkerClient/index.ts';
-import type { CellSampling, ColorDepth, ColorSpace, RenderMode, ScreenRegion } from '../types.ts';
+import type { CellSampling, ColorDepth, ColorSpace, KittyCompression, RenderMode, ScreenRegion } from '../types.ts';
 
 export interface ScreenUpdatableOptions extends EffectOptions {
   /** Internal render scale (0.25-4x); higher values increase PNG quantization fidelity at the cost of CPU (default: `2`) */
@@ -20,6 +20,8 @@ export interface ScreenUpdatableOptions extends EffectOptions {
   dirtyRects?: boolean;
   /** File-based transmission (t=t): undefined follows detectKittyFileTransferSupport(), true/false forces (default: undefined) */
   fileTransfer?: boolean;
+  /** Kitty payload format override: "png" (f=100), "zlib" (deflate-compressed raw pixels, f=24 with o=z), or "none" (raw pixels, f=24). Applies on both mediums and in the file-write fallback. Undefined picks per medium: raw pixels on the file medium, PNG inline (default: undefined) */
+  compression?: KittyCompression;
   /** Renderer selection. undefined follows the cached graphics probe (getKittyGraphicsSupported() === false auto-detects the cell mode from TERM_PROGRAM, true or null selects kitty). "kitty" forces the graphics protocol. "half-block" and "cell-background" force the block-glyph renderer (2 pixels per cell via U+2580, or 1 pixel per cell via background-colored spaces). "emoji" renders one emoji square per cell by nearest color. "ascii" renders one printable ASCII glyph per cell chosen by nearest shape (default: undefined) */
   renderMode?: RenderMode;
   /** Cell-mode SGR color depth: 0 = truecolor, 256, or 16; undefined auto-detects from COLORTERM/TERM (default: undefined) */

@@ -27,6 +27,9 @@ export type ColorDepth = 0 | 16 | 256;
 /** Cell-mode downsampling strategy: "box" averages each cell's source region in linear light, "nearest" copies the region's center pixel */
 export type CellSampling = 'box' | 'nearest';
 
+/** Kitty graphics payload format: "png" (f=100), "zlib" (deflate-compressed raw pixels, f=24 with o=z), or "none" (raw pixels, f=24) */
+export type KittyCompression = 'png' | 'zlib' | 'none';
+
 /** Which rendering path Screen uses: "kitty" (graphics protocol), "half-block" (2 pixels per cell via U+2580), "cell-background" (1 pixel per cell via background-colored spaces), "emoji" (one emoji square per cell by nearest color), or "ascii" (one printable ASCII glyph per cell by nearest shape) */
 export type RenderMode = 'kitty' | 'half-block' | 'cell-background' | 'emoji' | 'ascii';
 
