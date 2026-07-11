@@ -8,7 +8,7 @@ export interface KittyRendererOptions extends RendererOptionsBase {
   pngCompressionLevel?: number;
   /** Override encode-worker creation (tests, embedding) */
   encodeWorkerFactory?: WorkerFactory;
-  /** Delta frames on terminals the probe rejected or never checked: undefined follows detectKittyAnimationSupport(), true/false overrides the probe; deltas still require enableDiffRendering and an integer scale of 1 or more (default: undefined) */
+  /** Delta frames (a=f frame edits): undefined enables them only when detectKittyAnimationSupport() passed AND the file medium is unavailable (deltas save PTY bytes but cost kitty a full-frame disk round trip per edit, so they only pay off over SSH), true/false overrides; deltas still require enableDiffRendering and an integer scale of 1 or more (default: undefined) */
   dirtyRects?: boolean;
   /** File-based transmission (t=t): undefined follows detectKittyFileTransferSupport(), true/false forces (default: undefined). When using KittyRenderer directly without an output sink, the returned payload must be written to the terminal or the frame's temp file is orphaned until the next stale sweep. */
   fileTransfer?: boolean;

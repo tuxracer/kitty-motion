@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import { KittyRenderer, IMAGE_ID_STRIDE } from './index.ts';
-import { resetKittyAnimationDetection, resetKittyFileTransferDetection } from '../kittyProtocol/index.ts';
+import { detectKittyAnimationSupport, resetKittyAnimationDetection, resetKittyFileTransferDetection } from '../kittyProtocol/index.ts';
 import { isKittyEncodeRequest, type KittyEncodeRequest } from '../kittyEncode/index.ts';
 import { encodeImageIdFg } from '../placeholder/index.ts';
 import { BLOOM_REACH } from '../postProcessing/index.ts';
@@ -716,5 +716,89 @@ describe('KittyRenderer dilated deltas under bounded spread effects', () => {
     const payload = r.renderRgb24(withPixel(base, 8, 5, 3));
     expect(payload).toContain('a=f');
     expect(payload).toContain('x=0,y=0'); // full-frame edit, not a sub-rect
+  });
+});
+
+describe('delta default policy', () => {
+  // Seed the animation-support cache to true via the env fast path
+  const seedAnimationSupported = async (): Promise<void> => {
+    resetKittyAnimationDetection();
+    process.env['KITTY_WINDOW_ID'] = '1';
+    try {
+      await detectKittyAnimationSupport();
+    } finally {
+      delete process.env['KITTY_WINDOW_ID'];
+    }
+  };
+
+  afterEach(() => {
+    resetKittyAnimationDetection();
+  });
+
+  const lastTransmit = (fileTransfer: boolean): 'full' | 'delta' => {
+    const worker = new FakeEncodeWorker();
+    const r = new KittyRenderer({
+      sourceWidth: 8,
+      sourceHeight: 8,
+      scale: 1,
+      fileTransfer,
+      encodeWorkerFactory: () => worker,
+    });
+    r.setOutputSink(() => true);
+    const base = rgbFrame(8, 8, 100);
+    warmupWithWorker(r, worker, base);
+    r.renderRgb24(withPixel(base, 8, 5, 3));
+    worker.respond('p');
+    return worker.requests[worker.requests.length - 1].meta.transmit;
+  };
+
+  it('uses deltas when animation is supported and the file medium is unavailable', async () => {
+    await seedAnimationSupported();
+    expect(lastTransmit(false)).toBe('delta');
+  });
+
+  it('keeps full transmissions on file-medium terminals even with animation support', async () => {
+    await seedAnimationSupported();
+    expect(lastTransmit(true)).toBe('full');
+  });
+
+  it('dirtyRects: true still forces deltas on file-medium terminals', async () => {
+    await seedAnimationSupported();
+    const worker = new FakeEncodeWorker();
+    const r = new KittyRenderer({
+      sourceWidth: 8,
+      sourceHeight: 8,
+      scale: 1,
+      dirtyRects: true,
+      fileTransfer: true,
+      encodeWorkerFactory: () => worker,
+    });
+    r.setOutputSink(() => true);
+    const base = rgbFrame(8, 8, 100);
+    warmupWithWorker(r, worker, base);
+    r.renderRgb24(withPixel(base, 8, 5, 3));
+    worker.respond('p');
+    expect(worker.requests[worker.requests.length - 1].meta.transmit).toBe('delta');
+  });
+
+  it('unicode placement re-transmits fully on file-medium terminals', async () => {
+    await seedAnimationSupported();
+    const worker = new FakeEncodeWorker();
+    const r = new KittyRenderer({
+      sourceWidth: 8,
+      sourceHeight: 8,
+      scale: 1,
+      fileTransfer: true,
+      placement: 'unicode',
+      encodeWorkerFactory: () => worker,
+    });
+    r.setOutputSink(() => true);
+    const base = rgbFrame(8, 8, 100);
+    warmupWithWorker(r, worker, base);
+    r.renderRgb24(withPixel(base, 8, 5, 3));
+    worker.respond('p');
+    const meta = worker.requests[worker.requests.length - 1].meta;
+    expect(meta.transmit).toBe('full');
+    expect(meta.createPlacement).toBe(false); // a=t re-transmit, not a placement recreate
   });
 });

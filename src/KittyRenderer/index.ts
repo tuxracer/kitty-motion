@@ -268,14 +268,16 @@ export class KittyRenderer {
       this.pendingDirty === null ? meta.dirtyRect : unionRects(this.pendingDirty, meta.dirtyRect);
   }
 
-  // Whether the terminal applies a=f animation frame edits. Kitty does;
-  // Ghostty has no animation protocol, so it must re-transmit the image
-  // instead. The dirtyRects option overrides the probe result.
+  // Whether frames update via a=f frame edits. The dirtyRects option
+  // overrides; otherwise deltas require the animation protocol AND no file
+  // medium. Deltas only save PTY bytes, and kitty pays a full-frame
+  // disk-cache round trip per a=f edit, so they only pay for themselves
+  // when PTY bandwidth is the bottleneck (SSH, where the file probe fails).
   private canEditFrames(): boolean {
     if (this.dirtyRects !== undefined) {
       return this.dirtyRects;
     }
-    return getKittyAnimationSupported() === true;
+    return getKittyAnimationSupported() === true && !this.canUseFileMedium();
   }
 
   // Delta frames require diff state, an exact integer mapping to scaled
