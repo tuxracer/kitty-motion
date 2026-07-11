@@ -890,4 +890,22 @@ describe('createScreen', () => {
     // Non-TTY stdin makes both probes resolve false quickly, but they DID run
     expect(getKittyAnimationSupported()).toBe(false);
   });
+
+  it('runs the animation probe for unicode placement even with the file medium on', async () => {
+    // Unicode placement needs the frame-edit capability regardless of the
+    // delta policy (kitty deletes placements on same-id re-transmits), so
+    // the file medium must not skip this probe.
+    const stream = new FakeStream();
+    using screen = await createScreen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'kitty',
+      fileTransfer: true,
+      placement: 'unicode',
+      workerFactory: NO_WORKER,
+    });
+    expect(screen.getRenderMode()).toBe('kitty');
+    expect(getKittyAnimationSupported()).not.toBeNull(); // probe ran
+  });
 });

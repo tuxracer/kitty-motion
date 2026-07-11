@@ -311,10 +311,12 @@ export const createScreen = async (options: ScreenOptions): Promise<Screen> => {
       options.fileTransfer === undefined
         ? await detectKittyFileTransferSupport()
         : options.fileTransfer;
-    // The animation result only matters when the default delta policy can
-    // reach deltas: dirtyRects unset and no file medium (deltas only pay
-    // for themselves when PTY bandwidth is the bottleneck)
-    if (options.dirtyRects === undefined && !fileMedium) {
+    // The animation result matters when the default delta policy can reach
+    // deltas (dirtyRects unset and no file medium, since deltas only pay
+    // for themselves when PTY bandwidth is the bottleneck), and always for
+    // unicode placement, where a=f frame edits are the one in-place update
+    // a virtual placement survives on kitty regardless of the medium
+    if (options.dirtyRects === undefined && (!fileMedium || options.placement === 'unicode')) {
       await detectKittyAnimationSupport();
     }
   }
