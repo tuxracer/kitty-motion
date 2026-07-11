@@ -566,6 +566,96 @@ describe('KittyFrameEncoder', () => {
     }
   });
 
+  describe('compression overrides', () => {
+    it('forces PNG onto the file medium', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'kitty-encode-test-'));
+      const filePath = join(dir, 'forced-png');
+      try {
+        const frame = makeFrame();
+        const meta = makeMeta({ medium: 'file', filePath, compression: 'png' });
+        const payload = new KittyFrameEncoder().encode(frame, meta);
+
+        const [first] = parseEscapes(payload);
+        expect(first.control).toContain('t=t');
+        expect(first.control).toContain('f=100');
+        expect(first.control).not.toContain('f=24');
+        expect(decodePng(readFileSync(filePath)).pixels).toEqual(frame);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('forces zlib onto the file medium and the file inflates to the pixels', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'kitty-encode-test-'));
+      const filePath = join(dir, 'forced-zlib');
+      try {
+        const frame = makeFrame();
+        const meta = makeMeta({ medium: 'file', filePath, compression: 'zlib' });
+        const payload = new KittyFrameEncoder().encode(frame, meta);
+
+        const [first] = parseEscapes(payload);
+        expect(first.control).toContain('t=t');
+        expect(first.control).toContain('f=24');
+        expect(first.control).toContain('o=z');
+        expect(first.control).toContain('s=4,v=4');
+        expect(new Uint8Array(inflateSync(readFileSync(filePath)))).toEqual(frame);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('forces raw pixels onto the escape medium', () => {
+      const frame = makeFrame();
+      const meta = makeMeta({ compression: 'none' });
+      const payload = new KittyFrameEncoder().encode(frame, meta);
+
+      const [first] = parseEscapes(payload);
+      expect(first.control).toContain('f=24');
+      expect(first.control).toContain('s=4,v=4');
+      expect(first.control).not.toContain('o=z');
+      expect(first.control).not.toContain('t=t');
+      expect(new Uint8Array(Buffer.from(first.data, 'base64'))).toEqual(frame);
+    });
+
+    it('forces zlib onto the escape medium and the data inflates to the pixels', () => {
+      const frame = makeFrame();
+      const meta = makeMeta({ compression: 'zlib' });
+      const payload = new KittyFrameEncoder().encode(frame, meta);
+
+      const [first] = parseEscapes(payload);
+      expect(first.control).toContain('f=24');
+      expect(first.control).toContain('o=z');
+      expect(new Uint8Array(inflateSync(Buffer.from(first.data, 'base64')))).toEqual(frame);
+    });
+
+    it('keeps the forced format in the file-write fallback', () => {
+      const frame = makeFrame();
+      const meta = makeMeta({ medium: 'file', filePath: '/no/such/dir/frame', compression: 'none' });
+      const payload = new KittyFrameEncoder().encode(frame, meta);
+
+      const [first] = parseEscapes(payload);
+      expect(first.control).not.toContain('t=t');
+      expect(first.control).toContain('f=24'); // override is absolute, even inline
+      expect(new Uint8Array(Buffer.from(first.data, 'base64'))).toEqual(frame);
+    });
+
+    it('applies the forced format to delta frames', () => {
+      const frame = makeFrame();
+      const meta = makeMeta({
+        transmit: 'delta',
+        dirtyRect: { x: 1, y: 2, width: 2, height: 2 },
+        compression: 'none',
+      });
+      const payload = new KittyFrameEncoder().encode(frame, meta);
+
+      const [first] = parseEscapes(payload);
+      expect(first.control).toContain('a=f');
+      expect(first.control).toContain('f=24');
+      expect(first.control).toContain('s=2,v=2');
+      expect(first.control).toContain('x=1,y=2');
+    });
+  });
+
   describe('encodeImage', () => {
     it('produces standalone PNG bytes with no Kitty escape wrapping', () => {
       const png = new KittyFrameEncoder().encodeImage(makeFrame(), 4, 4, DEFAULT_PNG_COMPRESSION);
