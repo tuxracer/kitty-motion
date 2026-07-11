@@ -112,6 +112,12 @@ selects the kitty renderer.
 | `capturePng(): Uint8Array` | Snapshot the last rendered frame as standalone PNG bytes at source resolution, always at maximum deflate compression (level 9, not the render loop's `pngCompressionLevel`) since a screenshot is not time sensitive. Write them yourself, e.g. `fs.writeFile(path, screen.capturePng())` |
 | `dispose()` | Clear the image, restore the cursor, and terminate the encode worker. Called automatically on process exit and termination signals unless `autoDispose: false` |
 
+### Properties
+
+| Property | Description |
+|---|---|
+| `VERSION: string` | The library's version string, same value as the top-level `VERSION` export |
+
 ## Low-level exports
 
 For building a custom pipeline instead of using `Screen`:

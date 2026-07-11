@@ -9,6 +9,7 @@ import {
   getKittyGraphicsSupported,
 } from '../kittyProtocol/index.ts';
 import { detectCellPixelSize, detectCellRenderMode } from '../terminal/index.ts';
+import { VERSION } from '../consts.ts';
 import type { CapturedFrame, Renderer, RenderMode, ScreenRegion } from '../types.ts';
 import { AUTO_DISPOSE_SIGNALS, SCREENSHOT_PNG_COMPRESSION } from './consts.ts';
 import type { ScreenOptions, ScreenUpdatableOptions } from './types.ts';
@@ -82,6 +83,9 @@ const unregisterAutoDispose = (screen: Screen): void => {
  * unless you have already run the `detect*` probes yourself.
  */
 export class Screen {
+  /** Library version */
+  readonly VERSION: string = VERSION;
+
   private renderer: Renderer;
   private activeRenderMode: RenderMode = 'kitty';
   private gate: OutputGate;
