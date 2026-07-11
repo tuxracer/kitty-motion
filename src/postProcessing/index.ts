@@ -259,7 +259,7 @@ export class PostProcessingPipeline {
    * rect. dst is never touched outside the returned rect. src must hold
    * converted, pre-post-processing pixels for at least the double-dilated
    * region. Do not call while hasUnboundedEffects() is true (curvature has
-   * no useful bound); callers keep full-frame apply() there.
+   * no useful bound). Callers keep full-frame apply() there.
    */
   applyToRect(src: Uint8Array, dst: Uint8Array, width: number, height: number, damage: Rect): Rect {
     const reach = this.effectReach();

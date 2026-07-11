@@ -683,6 +683,29 @@ describe('KittyRenderer dilated deltas under bounded spread effects', () => {
     }
   });
 
+  it('matches full-frame processing on full-transmit terminals with bounded spread effects', () => {
+    const opts = {
+      sourceWidth: 32, sourceHeight: 32, scale: 1, fileTransfer: false,
+      dirtyRects: false, bloom: 0.6, bloomThreshold: 0.2, ntsc: 0.5,
+      scanlines: 0.4,
+    };
+    const bounded = new KittyRenderer(opts);
+    const control = new KittyRenderer({ ...opts, enableDiffRendering: false });
+    const base = randomFrame(32, 32, 11);
+    warmup(bounded, base);
+    warmup(control, base);
+    for (const [x, y] of [[20, 12], [0, 0], [31, 31]] as const) {
+      const changed = withPixel(base, 32, x, y);
+      const payload = bounded.renderRgb24(changed);
+      control.renderRgb24(changed);
+      expect(payload).toContain('a=T'); // still a full transmit
+      expect(bounded.captureRgb().data).toEqual(control.captureRgb().data);
+      bounded.renderRgb24(base);
+      control.renderRgb24(base);
+      expect(bounded.captureRgb().data).toEqual(control.captureRgb().data);
+    }
+  });
+
   it('keeps full-frame rects while curvature is enabled', () => {
     const r = new KittyRenderer({
       sourceWidth: 8, sourceHeight: 8, scale: 1, dirtyRects: true,

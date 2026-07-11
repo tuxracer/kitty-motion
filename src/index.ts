@@ -11,7 +11,7 @@ export type { KittyRendererOptions } from './KittyRenderer/index.ts';
 export { CellRenderer } from './CellRenderer/index.ts';
 export type { CellRendererOptions, CellLayout } from './CellRenderer/index.ts';
 export { PostProcessingPipeline } from './postProcessing/index.ts';
-export type { EffectOptions } from './postProcessing/index.ts';
+export type { EffectOptions, EffectReach } from './postProcessing/index.ts';
 export { computeDisplayLayout } from './displayLayout/index.ts';
 export type { DisplayLayout, DisplayLayoutOptions } from './displayLayout/index.ts';
 export { computeDirtyRect, unionRects, fullFrameRect, isFullFrameRect, dilateRect } from './dirtyRect/index.ts';
