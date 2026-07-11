@@ -392,7 +392,7 @@ export class KittyFrameEncoder {
     return this.rawDataBuffer;
   }
 
-  // A forced meta.compression wins on every medium; auto sends raw pixels on
+  // A forced meta.compression wins on every medium. Auto sends raw pixels on
   // the file medium (no encode for this library, no decode for the terminal)
   // and PNG on the inline escape medium (bandwidth-constrained)
   private resolveFormat(meta: KittyFrameMeta, medium: 'escape' | 'file'): KittyCompression {
@@ -400,8 +400,9 @@ export class KittyFrameEncoder {
   }
 
   // Produce the payload bytes for the resolved format. Raw formats scale the
-  // pixels and skip PNG entirely; zlib deflates the scaled pixels at a fixed
-  // fast level (an inflate costs the terminal far less than a PNG decode)
+  // pixels and skip PNG entirely. The zlib format deflates the scaled pixels
+  // at a fixed fast level (an inflate costs the terminal far less than a PNG
+  // decode)
   private encodeData(format: KittyCompression, job: EncodeJob, meta: KittyFrameMeta): Buffer {
     if (format === 'png') {
       return this.encodePng(job, meta);
@@ -413,7 +414,7 @@ export class KittyFrameEncoder {
   }
 
   // Control-data keys describing the payload format. PNG (f=100) is
-  // self-describing; raw pixels (f=24) carry no header, so s=/v= state the
+  // self-describing. Raw pixels (f=24) carry no header, so s=/v= state the
   // transmitted dimensions, and o=z marks a deflate-compressed payload
   private formatKeys(format: KittyCompression, job: EncodeJob): string {
     if (format === 'png') {
