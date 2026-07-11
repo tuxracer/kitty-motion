@@ -20,12 +20,14 @@ numbers on exit):
 | Backpressure-aware output | on a slow terminal or SSH link, frames drop instead of queueing, so on-screen latency never grows |
 | Font-independent aspect correction | the terminal's real cell pixel size is queried at startup, so proportions are correct on any font |
 
-The probes compose per terminal with no configuration. A local kitty passes
-the animation and shared-filesystem probes and gets deltas delivered as
-files. Kitty over SSH keeps deltas but streams them inline, exactly where
-small payloads matter most. A terminal with neither capability gets plain
+The probes compose per terminal with no configuration. Deltas are used only
+when the animation probe passes and the file probe fails, in practice an SSH
+session, since that is the one case where PTY bandwidth is the bottleneck a
+delta actually relieves. A local kitty or Ghostty passes the shared-filesystem
+probe instead, so both get full re-transmits delivered as files, raw pixels by
+default rather than PNG. A terminal with neither capability gets plain
 streamed full frames. Every combination renders correctly, and every probe can be
-overridden per option (`dirtyRects`, `fileTransfer`).
+overridden per option (`dirtyRects`, `fileTransfer`, `compression`).
 
 ## Which layer do I want?
 
@@ -85,8 +87,9 @@ selects the kitty renderer.
 | `pngCompressionLevel` | `number` | `5` | Deflate level (1-9). See [Design notes](#compression-level) for the benchmark behind this default |
 | `colorEnabled` | `boolean` | `true` | When `false`, renders in grayscale |
 | `enableDiffRendering` | `boolean` | `true` | Skip re-encoding frames that are pixel-identical to the previous frame |
-| `dirtyRects` | `boolean` | `undefined` | `undefined` follows `detectKittyAnimationSupport()`, `true` enables delta frames on terminals the probe rejected or never checked, and `false` disables them. Deltas still require `enableDiffRendering` and an integer `scale` of 1 or more |
+| `dirtyRects` | `boolean` | `undefined` | Delta frames (`a=f` edits). `undefined` enables them only when `detectKittyAnimationSupport()` passed and the file medium is unavailable. Deltas save PTY bytes but cost kitty a full-frame disk round trip per edit, so by default they are used only where bandwidth is the bottleneck (SSH). `true`/`false` overrides. Deltas still require `enableDiffRendering` and an integer `scale` of 1 or more |
 | `fileTransfer` | `boolean` | `undefined` | Deliver frames as temp files instead of base64 escape payloads. `undefined` follows `detectKittyFileTransferSupport()`, and `true`/`false` overrides the probe |
+| `compression` | `"png" \| "zlib" \| "none"` | `undefined` | Kitty payload format override that forces the format on every medium. `"png"` sends PNG (`f=100`), `"zlib"` sends deflate-compressed raw pixels (`f=24` with `o=z`, fixed at deflate level 1), `"none"` sends raw pixels (`f=24`). `undefined` picks per medium: raw pixels on the file medium (no PNG encode here, no PNG decode on the terminal), PNG inline |
 | `renderMode` | `"kitty" \| "half-block" \| "cell-background" \| "emoji" \| "ascii"` | `undefined` | Renderer selection. `undefined` follows the cached graphics probe (`getKittyGraphicsSupported() === false` auto-detects the cell mode from `TERM_PROGRAM`, `true` or `null` selects kitty). `"kitty"` forces the graphics protocol, `"half-block"` and `"cell-background"` force the block-glyph fallback, and `"emoji"` (opt-in only) renders one emoji square per cell by nearest color, and `"ascii"` (opt-in only) renders one printable ASCII character per cell by nearest shape |
 | `limitColors` | `0 \| 16 \| 256` | `undefined` | Cell mode only. SGR color depth. When `undefined`, a `COLORTERM` of `truecolor`/`24bit` selects truecolor (`0`), a `TERM` containing `256color` selects 256, and anything else selects 16 |
 | `cellSampling` | `"box" \| "nearest"` | `"nearest"` | Cell mode only. Downsampling strategy. `"nearest"` copies each cell's center pixel so hard-edged content stays solid, `"box"` averages the cell's footprint in linear light for smoother gradients. In `"ascii"` mode `"nearest"` caps samples per cell so cost stays flat as source resolution grows, while `"box"` averages the full footprint |
@@ -124,7 +127,7 @@ For building a custom pipeline instead of using `Screen`:
 
 - `KittyRenderer`, `KittyRendererOptions`: the full graphics-path pipeline (scaling, color, post-processing, diffing, worker-based encoding) without `Screen`'s layout, resize, and probe orchestration
 - `CellRenderer`, `CellRendererOptions`, `CellLayout`: cell fallback renderer for terminals without Kitty graphics (half blocks, or background-colored spaces on Terminal.app)
-- `KittyFrameEncoder`, `KittyFrameMeta`, `PngEncodeParams`: pure scale → PNG → base64 → APC-chunk encoder, usable synchronously or inside a worker. `encodeImage(rgb, width, height, compression)` produces a standalone PNG (no escape wrapping) for screenshots
+- `KittyFrameEncoder`, `KittyFrameMeta`, `PngEncodeParams`: pure scale → payload (PNG, zlib, or raw pixels, picked by `KittyFrameMeta.compression`) → base64 or file → APC-chunk encoder, usable synchronously or inside a worker. `encodeImage(rgb, width, height, pngCompressionLevel)` always produces a standalone PNG (no escape wrapping, no `compression` override) for screenshots
 - `KittyEncodeWorkerClient`, `WorkerFactory`, `WorkerLike`: owns the encode worker, transfers frames, recycles buffers, coalesces latest-wins
 - `KittyEncodeRequest`, `KittyEncodeResponse`, `isKittyEncodeRequest`, `isKittyEncodeResponse`: the message contract a custom `workerFactory` worker must speak
 - `kittyGridAspectRatio`: compute the terminal cell-grid aspect ratio needed to display a source framebuffer correctly
@@ -145,7 +148,7 @@ For building a custom pipeline instead of using `Screen`:
 - `ASCII_SHAPES`, `ASCII_CHARS`, `nearestAsciiChar`, `createAsciiLookup`, `enhanceAsciiContrast`, `SHAPE_REGION_COLS`, `SHAPE_REGION_ROWS`, `SHAPE_VECTOR_DIMS`, `AsciiShape`, `AsciiLookup`: the font-generated per-character shape-vector table and the nearest-shape lookup used by the opt-in `ascii` render mode
 - `computeDisplayLayout`, `DisplayLayout`, `DisplayLayoutOptions`: centered, aspect-correct cell-grid placement (shared by both renderers)
 - `rgbToAnsi256`, `rgbToAnsi16`, `convertFrameToRgb24`, `FrameToRgb24Options`, `buildGammaLUT`, `frameUnitsPerPixel`, `allocateFrameBuffer`, `allocateFrameBufferLike`, `isRgb15Buffer`: color quantization, gamma tables, framebuffer conversion, and framebuffer allocation primitives
-- `FrameBuffer`, `ColorSpace`, `Renderer`, `RenderMode`, `CapturedFrame`: shared framebuffer types, the renderer contract both renderers implement, and the RGB snapshot `captureRgb` returns
+- `FrameBuffer`, `ColorSpace`, `KittyCompression`, `Renderer`, `RenderMode`, `CapturedFrame`: shared framebuffer types, the Kitty payload format union, the renderer contract both renderers implement, and the RGB snapshot `captureRgb` returns
 - `VERSION`: the library's version string, read from package.json so it always matches the installed release
 
 ## Design notes
@@ -186,7 +189,9 @@ Kitty scales a transmitted image to exactly fill the requested `cols x rows` cel
 
 After the first frames, only the changed bounding rectangle is re-encoded and transmitted, as a Kitty animation-protocol frame edit composited into the displayed image. Payload scales with the changed area instead of the frame size. Measured on game-like content (a detailed dithered 256x240 background with a 16x16 moving sprite, the kind of frame an emulator produces), a full frame costs 2.67 ms to encode and 89 KB to send, and the delta costs 0.19 ms and 700 bytes. When every pixel changes (scrolling, video), the delta degenerates to a full-frame edit and costs the same as before, so the worst case is never a regression.
 
-The rect bounds more than the encode. Color conversion and pointwise post-processing also run only within the transmitted rectangle. Pixels outside it are unchanged since the previous frame, so the renderer's RGB working buffer already holds their converted, processed values. Measured on the sprite scenario above with gamma, scanlines, and vignette enabled, the per-frame render cost drops from 0.50 ms to 0.20 ms. The same narrowing applies on terminals that must re-transmit full frames (no animation protocol, or Ghostty's unicode-placement path). The transmit stays full-frame, but conversion and pointwise post-processing still touch only the changed rectangle. Measured on the sprite scenario with gamma, scanlines, and vignette, the full-transmit render cost drops from 2.43 ms to 2.21 ms per frame. Effects with a bounded influence radius (bloom, NTSC, chromatic aberration) keep deltas alive. The renderer converts into a pre-effect buffer, runs the pipeline over the damage dilated by the combined effect reach, and transmits the dilated rect. Measured on the sprite scenario with the CRT preset (scanlines, vignette, bloom, NTSC), payloads drop from 108 KB full frames to 4.1 KB deltas and render+encode from 2.9 ms to 0.22 ms per frame. Curvature remaps pixels across the whole frame, so it (and any combination including it) still forces full-frame processing and transmits. (Replacing the blur loops' per-pixel `sum / windowSize` divisions with exact fixed-point reciprocal multiplies was tried and reverted: it measured 6 to 10 percent slower on an Apple M-series laptop, where the integer divide beats the extra branch and multiply.) Frames dropped by backpressure or coalescing have their damage rectangles unioned into the next frame, so no screen region can go stale. Requires terminal support, detected at startup by `detectKittyAnimationSupport()`. Terminals without it (or hosts setting `dirtyRects: false`) keep receiving full frames. Setting `dirtyRects: true` enables delta frames on terminals the probe rejected or never checked. It still requires `enableDiffRendering` and an integer `scale` of 1 or more, since fractional scales cannot map pixel-precise dirty rects onto the encoded output.
+The rect bounds more than the encode. Color conversion and pointwise post-processing also run only within the transmitted rectangle. Pixels outside it are unchanged since the previous frame, so the renderer's RGB working buffer already holds their converted, processed values. Measured on the sprite scenario above with gamma, scanlines, and vignette enabled, the per-frame render cost drops from 0.50 ms to 0.20 ms. The same narrowing applies on terminals that must re-transmit full frames (no animation protocol, the file medium's default policy on local kitty, or Ghostty's unicode-placement path). The transmit stays full-frame, but conversion and pointwise post-processing still touch only the changed rectangle. Measured on the sprite scenario with gamma, scanlines, and vignette, the full-transmit render cost drops from 2.43 ms to 2.21 ms per frame. Effects with a bounded influence radius (bloom, NTSC, chromatic aberration) keep deltas alive. The renderer converts into a pre-effect buffer, runs the pipeline over the damage dilated by the combined effect reach, and transmits the dilated rect. Measured on the sprite scenario with the CRT preset (scanlines, vignette, bloom, NTSC), payloads drop from 108 KB full frames to 4.1 KB deltas and render+encode from 2.9 ms to 0.22 ms per frame. Curvature remaps pixels across the whole frame, so it (and any combination including it) still forces full-frame processing and transmits. (Replacing the blur loops' per-pixel `sum / windowSize` divisions with exact fixed-point reciprocal multiplies was tried and reverted: it measured 6 to 10 percent slower on an Apple M-series laptop, where the integer divide beats the extra branch and multiply.) Frames dropped by backpressure or coalescing have their damage rectangles unioned into the next frame, so no screen region can go stale. Requires terminal support, detected at startup by `detectKittyAnimationSupport()`, and by default only takes effect when the file medium is unavailable too (see below). Terminals without animation support, or with the file medium active, keep receiving full frames unless a host sets `dirtyRects: true`. It still requires `enableDiffRendering` and an integer `scale` of 1 or more, since fractional scales cannot map pixel-precise dirty rects onto the encoded output.
+
+Deltas are the default only over SSH, not on a local kitty, because of what an `a=f` edit costs the terminal. Every edit makes kitty synchronously read the base frame from its disk-backed image cache, compose the delta into it, and write the full composed frame back, a cost that scales with the frame size, not the delta size. Profiling kitty 0.47.4 playing high-resolution video confirmed it. `a=f` edits pinned kitty at about 101 percent CPU with 74 percent of main-thread samples in `png_read_image`, and macOS flagged 2.1 GB of file-backed memory dirtied in 14 seconds from the sustained multi-MB/s disk-cache writes. Forcing full re-transmits instead dropped CPU to about 82 percent and collapsed the write storm. Deltas stay the default over SSH, where they cut PTY bytes instead of disk I/O (the measured 89 KB full frame versus 700 byte delta on sprite content above).
 
 ### Native row compares in the diff scan
 
@@ -199,6 +204,10 @@ Retro-resolution sources were already cheap and are unaffected.
 ### File-based transmission
 
 On terminals that share a filesystem with the process, each frame is written to a fresh temp file and the escape sequence carries only the base64-encoded path (about 100 bytes), removing the 33 percent base64 inflation and the terminal-side cost of parsing large escape payloads. Measured on the plasma demo (128x96 truecolor, every pixel changes every frame at 30fps), escape traffic through the pty drops from 1,326 KB/s to 5 KB/s with identical frame counts. Files use the Kitty `t=t` medium. They live in the OS temp directory with the string `tty-graphics-protocol` in their names, which the terminal deletes after reading. Support is detected at startup by `detectKittyFileTransferSupport()`, which asks the terminal to read a real probe file, so SSH sessions and containers correctly fall back to streaming escapes. If a frame's file write fails, that frame falls back to an inline escape payload. Frames dropped by backpressure have their files removed by the renderer. Setting `fileTransfer: true` forces file delivery on terminals the probe rejected or never checked.
+
+### Raw pixels on the file medium
+
+The file medium defaults to raw `f=24` pixels instead of PNG. That skips two synchronous compression steps on the frame's hot path. This library never runs the PNG encoder, and the terminal never runs a PNG decoder, only a single read of the temp file's raw bytes. The tradeoff is transfer size. A 1080p RGB24 frame is about 6 MB raw versus tens of kilobytes compressed, but the file is written once, read once, and deleted by the terminal, so the extra bytes land on local disk I/O, not the pty. The `compression` option forces a format on every medium regardless of the default: `"png"` restores PNG encoding, `"zlib"` deflates the raw pixels at a fixed fast level (level 1, via `node:zlib`) so the terminal pays a cheap inflate instead of a PNG decode, and `"none"` is the file medium's default made explicit.
 
 ### Cell-renderer fallback
 
@@ -272,14 +281,18 @@ controls in other rows, and the host must not repaint the video rows.
 `placement: "unicode"` removes the single-compositor restriction by handing
 layout to the host. The image is transmitted once as a virtual placement
 (`a=T,U=1` with `c`/`r` from the region grid and no cursor move), then only
-pixels update. How they update depends on the terminal. Kitty supports the
-animation protocol, so updates go through the existing dirty-rect `a=f` frame
-edits (a full `a=T` re-transmit to the same id would delete its placements, so
-the renderer never uses one to update on Kitty). Ghostty has no animation
-protocol, so `detectKittyAnimationSupport()` returns false and the renderer
-instead re-transmits the whole image to the same id with `a=t`, which Ghostty
-composites into the existing placement in place (no delete, so no flicker).
-Either way it uses a single stable image id (no double-buffer). The host renders
+pixels update. How they update follows the same delta policy as the
+cursor-positioned path. SSH kitty (animation protocol available, file medium
+unavailable) animates them through the existing dirty-rect `a=f` frame edits (a
+full `a=T` re-transmit to the same id would delete its placements, so the
+renderer never uses one to update there). Local kitty and Ghostty both
+re-transmit the whole image to the same id with `a=t` instead. Local kitty has
+the file medium, so it falls outside the default delta policy the same way the
+cursor-positioned path does. Ghostty has no animation protocol at all, so
+`detectKittyAnimationSupport()` always returns false there and an `a=f` edit
+would be ignored. Either terminal composites the re-transmit into the existing
+placement in place, so there is no delete and no flicker. Either way it uses a
+single stable image id (no double-buffer). The host renders
 the placeholder cells returned by
 `getPlaceholderRows()` as ordinary text, and the terminal fills whichever cells
 carry them with the video, so a host redraw that reprints the text re-anchors

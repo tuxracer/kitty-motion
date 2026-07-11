@@ -21,13 +21,18 @@ which renders frames as colored Unicode block glyphs with cell-level diffing
 and no worker thread. On macOS Terminal.app (probed by `detectCellRenderMode()` from `TERM_PROGRAM`), cells render as background-colored spaces at 1 pixel per cell instead of half blocks, because Terminal.app draws block glyphs from the font and no font tiles the cell exactly. Cell downsampling defaults to nearest sampling (which keeps hard-edged content solid), with box averaging available through the `cellSampling` option. An opt-in `emoji` render mode draws each cell as the nearest of nine emoji squares at one double-wide cell per pixel, carrying color in the glyph instead of SGR. An opt-in `ascii` render mode draws each cell as the printable ASCII character whose shape best matches a 6-region luminance vector of the cell, colorized via an SGR foreground, with the per-character shape table generated offline from a bitmap font.
 
 After the initial frames, `KittyRenderer` sends only the changed bounding
-rectangle as an animation-protocol frame edit (`a=f`) when the terminal
-supports it (probed by `detectKittyAnimationSupport()` in `kittyProtocol`);
-dropped or coalesced delta frames have their damage unioned into the next
-frame so no region goes stale. On shared-filesystem terminals (probed by
-`detectKittyFileTransferSupport()`), payloads travel as `t=t` temp files
-(named by `frameFiles`) instead of inline base64, and the escape sequence
-carries only the file path.
+rectangle as an animation-protocol frame edit (`a=f`), but only when the
+terminal supports it (probed by `detectKittyAnimationSupport()` in
+`kittyProtocol`) AND file transfer is unavailable, in practice an SSH session,
+since a delta only saves PTY bytes while kitty pays a full-frame disk-cache
+round trip per `a=f` edit. Dropped or coalesced delta frames have their damage
+unioned into the next frame so no region goes stale. On shared-filesystem
+terminals (probed by `detectKittyFileTransferSupport()`), payloads travel as
+`t=t` temp files (named by `frameFiles`) instead of inline base64, carrying
+raw `f=24` pixels by default (no PNG encode on this side, no PNG decode on the
+terminal's), and the escape sequence carries only the file path. A
+`compression` option forces `png`, `zlib`, or raw pixels (`none`) on every
+medium regardless of the default.
 
 Both renderers can confine output to a fixed `region` sub-rectangle (1-based
 cell coordinates, aspect-fit and centered inside the box by
@@ -41,12 +46,13 @@ per-instance image-id range so multiple panels can coexist). In embedded mode
 With `placement: "unicode"` (Kitty and Ghostty only), `KittyRenderer` takes the
 Unicode placeholder path so a host TUI framework like Ink owns layout. The image
 is transmitted once as a virtual placement (`a=T,U=1`, no cursor move) using a
-single stable image id, then animated through `a=f` frame edits on terminals
-with the animation protocol (Kitty), or full `a=t` re-transmits to the same id
-on terminals without it (Ghostty, where an `a=f` edit would be ignored). The `placeholder` module builds the
-placeholder cells (`U+10EEEE` plus row/column diacritics, image id in the
-foreground color) that `Screen.getPlaceholderRows()` returns for the host to
-draw as text.
+single stable image id, then animated through `a=f` frame edits on SSH kitty
+(animation protocol available, file medium unavailable), or full `a=t`
+re-transmits to the same id on local kitty and on Ghostty (which has no
+animation protocol at all, so an `a=f` edit would be ignored there). The
+`placeholder` module builds the placeholder cells (`U+10EEEE` plus row/column
+diacritics, image id in the foreground color) that `Screen.getPlaceholderRows()`
+returns for the host to draw as text.
 
 Supporting modules: `CellRenderer` (block-glyph fallback rendering with cell-level diffing), `rendererOptions` (shared option resolution and frame-buffer, gamma, and post-processing setup for both renderers), `displayLayout` (centered, aspect-correct cell-grid placement shared by both renderers), `kittyEncode` (scales, PNG-encodes, and chunks frames into complete protocol payloads; runs inside the worker, or on the main thread as a sync fallback), `kittyProtocol` (escape sequences), `placeholder` (builds the `U+10EEEE` placeholder cells for Kitty Unicode placement), `dirtyRect` (changed-region bounding boxes for delta frames), `frameFiles` (temp-file naming and stale-file sweep for file-based transmission), `png` (chunk encoding), `fitToTerminal` and `aspect` (sizing), `color` (gamma tables, RGB15 to RGB24), `asciiShapes` (generated per-character shape-vector table, nearest-shape lookup, and contrast step for the ascii render mode), `ansi` (cursor control), `terminal` (cell pixel size detection), `postProcessing` (CRT effects), `helpers` (small shared utilities). Root `src/types.ts` and `src/consts.ts` hold cross-module types (`ColorSpace`, `FrameBuffer`) and constants.
 
