@@ -7,7 +7,7 @@ The protocol was designed for static images. Sustaining motion means building fr
 - Unchanged frames are skipped entirely
 - Changed frames are sent as dirty-rect deltas on terminals with the [Kitty animation protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/#animation) and no shared filesystem (typically SSH), 128x smaller payloads on game-like content. Local terminals re-transmit full frames instead, since a delta costs kitty a full-frame disk round trip it doesn't otherwise pay
 - Payloads travel as temp files on local terminals (250x less pty traffic than inline escape sequences)
-- PNG encoding runs on a worker thread, off the render loop
+- Frame encoding runs on a worker thread, off the render loop
 - Slow links drop frames instead of building latency
 - Output is centered and aspect-corrected for the user's actual font
 

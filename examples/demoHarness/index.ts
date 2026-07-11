@@ -134,7 +134,7 @@ export const runDemo = async (demo: Demo): Promise<void> => {
     fileTransferEnv === undefined ? {} : { fileTransfer: envFlagEnabled(fileTransferEnv) };
 
   // DEMO_COMPRESSION=png, zlib, or none pins the kitty payload format; unset
-  // picks per medium (raw pixels on the file medium, PNG inline)
+  // picks per medium (raw pixels on the file medium, png inline)
   const compressionEnv = process.env["DEMO_COMPRESSION"];
   const compressionOverride: { compression?: KittyCompression } =
     compressionEnv === "png" || compressionEnv === "zlib" || compressionEnv === "none"

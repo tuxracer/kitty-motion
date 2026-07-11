@@ -10,7 +10,7 @@ export interface ScreenUpdatableOptions extends EffectOptions {
   pixelAspectRatio?: number;
   /** Terminal rows to exclude from the display area (e.g. for a status line) (default: `0`) */
   reservedRows?: number;
-  /** Deflate level (1-9); see docs/TRD.md Design notes for the benchmark behind this default (default: `5`) */
+  /** Deflate level (1-9), applied only when the resolved payload format is PNG (the inline default and the file-write fallback, or a forced compression: "png"). See docs/TRD.md Design notes for the benchmark behind this default (default: 5) */
   pngCompressionLevel?: number;
   /** When `false`, renders in grayscale (default: `true`) */
   colorEnabled?: boolean;

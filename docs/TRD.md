@@ -16,7 +16,7 @@ numbers on exit):
 | Diff skip: pixel-identical frames are never re-encoded | an idle frame costs one native buffer compare and zero output (0.10 ms at 1280x720) |
 | Dirty-rect deltas: after the first frames, only the changed bounding rectangle is re-encoded and transmitted as an in-place frame edit | on game-like content (detailed 256x240 background, 16x16 moving sprite), 14x less encode CPU and 128x smaller payloads (89 KB full frame vs 700 byte delta) |
 | File-based transmission: frames travel as terminal-deleted temp files, the escape carries only the file path | pty traffic in the full-frame stress demo drops from 1,326 KB/s to 5 KB/s, and the 33 percent base64 inflation disappears |
-| Worker-thread PNG encoding | roughly 0.6 ms of deflate per frame runs off your game loop's thread, with automatic synchronous fallback |
+| Worker-thread frame encoding | roughly 0.6 ms of deflate per frame for the PNG path (inline transmission and the file-write fallback), or raw pixel packing for the file medium, runs off your game loop's thread, with automatic synchronous fallback |
 | Backpressure-aware output | on a slow terminal or SSH link, frames drop instead of queueing, so on-screen latency never grows |
 | Font-independent aspect correction | the terminal's real cell pixel size is queried at startup, so proportions are correct on any font |
 
