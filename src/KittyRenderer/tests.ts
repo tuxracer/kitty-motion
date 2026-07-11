@@ -590,3 +590,48 @@ describe('KittyRenderer unicode placement', () => {
     expect(payload).not.toContain('U=1');
   });
 });
+
+describe('KittyRenderer bounded processing on full transmits', () => {
+  it('narrows the processing rect to the damage while still transmitting fully', () => {
+    const messages: string[] = [];
+    const r = new KittyRenderer({
+      sourceWidth: 8, sourceHeight: 8, scale: 1, dirtyRects: false,
+      onDebug: (m) => messages.push(m),
+    });
+    const base = rgbFrame(8, 8, 100);
+    warmup(r, base);
+    const payload = r.renderRgb24(withPixel(base, 8, 5, 3));
+    expect(payload).toContain('a=T'); // still a full transmit
+    expect(messages.some((m) => m.includes('processRect=5,3 1x1'))).toBe(true);
+  });
+
+  it('produces the same processed pixels as full reprocessing', () => {
+    const opts = {
+      sourceWidth: 8, sourceHeight: 8, scale: 1, dirtyRects: false,
+      gamma: 1.4, scanlines: 0.5, vignette: 0.3, brightness: 1.1,
+    };
+    const bounded = new KittyRenderer(opts);
+    const control = new KittyRenderer({ ...opts, enableDiffRendering: false });
+    const base = rgbFrame(8, 8, 100);
+    const changed = withPixel(base, 8, 5, 3);
+    warmup(bounded, base);
+    warmup(control, base);
+    bounded.renderRgb24(changed);
+    control.renderRgb24(changed);
+    expect(bounded.captureRgb().data).toEqual(control.captureRgb().data);
+  });
+
+  it('processes fully again after a diff state reset', () => {
+    const messages: string[] = [];
+    const r = new KittyRenderer({
+      sourceWidth: 8, sourceHeight: 8, scale: 1, dirtyRects: false,
+      onDebug: (m) => messages.push(m),
+    });
+    const base = rgbFrame(8, 8, 100);
+    warmup(r, base);
+    r.setDimensions(); // resize path sets needsFullTransmit
+    messages.length = 0;
+    r.renderRgb24(withPixel(base, 8, 2, 2));
+    expect(messages.some((m) => m.includes('processRect=0,0 8x8'))).toBe(true);
+  });
+});

@@ -388,6 +388,12 @@ export class KittyRenderer {
       return '';
     }
 
+    // Damage across this frame and any dropped predecessors (null = no change)
+    const damage =
+      changed !== null && this.pendingDirty !== null
+        ? unionRects(changed, this.pendingDirty)
+        : (changed ?? this.pendingDirty);
+
     // Decide full vs delta and the region to send. Unicode placement never
     // re-transmits except to (re)create the image: a full a=T to a live id
     // deletes its placements, so every non-recreate frame is an a=f edit.
@@ -409,33 +415,36 @@ export class KittyRenderer {
     // unicode path forces delta regardless, so gate the sub-rect there.
     const partialDeltaOk =
       this.placement !== 'unicode' || (Number.isInteger(this.scale) && this.scale >= 1);
+
+    // Processing can narrow to the damage whenever diff state is valid,
+    // independent of the transmit mode: pixels outside the damage are
+    // unchanged since the last frame, so nativeRgbBuffer already holds
+    // their converted, post-processed values. needsFullTransmit marks every
+    // diff state reset (first frame, resize, buffer realloc, worker
+    // failure). Effects that spread pixel influence force full processing.
+    const boundedRect =
+      !this.needsFullTransmit && !this.postProcessing.hasNonLocalEffects() ? damage : null;
+    const processRect = boundedRect ?? fullFrameRect(this.sourceWidth, this.sourceHeight);
+
+    // The transmitted region: deltas send only the damage, full transmits
+    // re-encode the whole (fully valid) buffer.
     let dirtyRect = fullFrameRect(this.sourceWidth, this.sourceHeight);
-    if (transmit === 'delta' && partialDeltaOk && !this.postProcessing.hasNonLocalEffects()) {
-      const damage =
-        changed !== null && this.pendingDirty !== null
-          ? unionRects(changed, this.pendingDirty)
-          : (changed ?? this.pendingDirty);
-      if (damage !== null) {
-        dirtyRect = damage;
-      }
+    if (transmit === 'delta' && partialDeltaOk && boundedRect !== null) {
+      dirtyRect = boundedRect;
     }
 
-    // Convert and post-process only within the transmitted rect: pixels
-    // outside it are unchanged since the last frame, so nativeRgbBuffer
-    // already holds their processed values (full transmits, forced whenever
-    // diff state resets or a non-local effect is active, cover the frame)
-    this.frameToRgbNative(frameBuffer, colorSpace, dirtyRect);
+    this.frameToRgbNative(frameBuffer, colorSpace, processRect);
 
     // Save current frame for next frame's diff check
     this.prevFrameBuffer.set(frameBuffer);
 
     // Apply post-processing effects at native resolution (much faster than scaled)
-    this.postProcessing.apply(this.nativeRgbBuffer, this.sourceWidth, this.sourceHeight, dirtyRect);
+    this.postProcessing.apply(this.nativeRgbBuffer, this.sourceWidth, this.sourceHeight, processRect);
 
     // Scale + PNG-encode + build the Kitty payload
     const meta = this.buildFrameMeta(transmit, dirtyRect);
     this.frameNumber++;
-    this.onDebug?.(`Frame #${this.frameNumber - 1}: ${transmit}, medium=${meta.medium}, imageId=${meta.currentImageId}, rect=${dirtyRect.x},${dirtyRect.y} ${dirtyRect.width}x${dirtyRect.height}`);
+    this.onDebug?.(`Frame #${this.frameNumber - 1}: ${transmit}, medium=${meta.medium}, imageId=${meta.currentImageId}, rect=${dirtyRect.x},${dirtyRect.y} ${dirtyRect.width}x${dirtyRect.height}, processRect=${processRect.x},${processRect.y} ${processRect.width}x${processRect.height}`);
 
     // The frame is now in flight; drops re-accumulate via notePayloadDropped
     this.pendingDirty = null;
