@@ -46,10 +46,12 @@ per-instance image-id range so multiple panels can coexist). In embedded mode
 With `placement: "unicode"` (Kitty and Ghostty only), `KittyRenderer` takes the
 Unicode placeholder path so a host TUI framework like Ink owns layout. The image
 is transmitted once as a virtual placement (`a=T,U=1`, no cursor move) using a
-single stable image id, then animated through `a=f` frame edits on SSH kitty
-(animation protocol available, file medium unavailable), or full `a=t`
-re-transmits to the same id on local kitty and on Ghostty (which has no
-animation protocol at all, so an `a=f` edit would be ignored there). The
+single stable image id, then animated through `a=f` frame edits on any kitty
+(the SSH-only delta policy does not apply here, because kitty deletes an
+image's placements when data is re-transmitted to its id, so `a=f` is the only
+in-place update a virtual placement survives), or full `a=t` re-transmits to
+the same id on Ghostty (which has no animation protocol, so an `a=f` edit
+would be ignored, and which keeps placements alive across re-transmits). The
 `placeholder` module builds the placeholder cells (`U+10EEEE` plus row/column
 diacritics, image id in the foreground color) that `Screen.getPlaceholderRows()`
 returns for the host to draw as text.

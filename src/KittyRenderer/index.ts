@@ -271,25 +271,33 @@ export class KittyRenderer {
       this.pendingDirty === null ? meta.dirtyRect : unionRects(this.pendingDirty, meta.dirtyRect);
   }
 
-  // Whether frames update via a=f frame edits. The dirtyRects option
-  // overrides. Otherwise deltas require the animation protocol AND no file
-  // medium. Deltas only save PTY bytes, and kitty pays a full-frame
-  // disk-cache round trip per a=f edit, so they only pay for themselves
-  // when PTY bandwidth is the bottleneck (SSH, where the file probe fails).
+  // Whether the terminal applies a=f animation frame edits. The dirtyRects
+  // option overrides the probe result. This is pure capability, not policy.
+  // Unicode placement depends on it directly because kitty deletes an
+  // image's placements when data is re-transmitted to its id, so a virtual
+  // placement can only update in place through a=f frame edits.
   private canEditFrames(): boolean {
     if (this.dirtyRects !== undefined) {
       return this.dirtyRects;
     }
-    return getKittyAnimationSupported() === true && !this.canUseFileMedium();
+    return getKittyAnimationSupported() === true;
   }
 
   // Delta frames require diff state, an exact integer mapping to scaled
-  // coordinates, and a terminal that supports animation frame edits
+  // coordinates, and a terminal that supports animation frame edits. On top
+  // of the capability, the default policy skips deltas when the file medium
+  // is available. Deltas only save PTY bytes, and kitty pays a full-frame
+  // disk-cache round trip per a=f edit, so they only pay for themselves
+  // when PTY bandwidth is the bottleneck (SSH, where the file probe fails).
+  // An explicit dirtyRects overrides the policy along with the capability.
   private canUseDelta(): boolean {
     if (!this.enableDiffRendering) {
       return false;
     }
     if (!Number.isInteger(this.scale) || this.scale < 1) {
+      return false;
+    }
+    if (this.dirtyRects === undefined && this.canUseFileMedium()) {
       return false;
     }
     return this.canEditFrames();

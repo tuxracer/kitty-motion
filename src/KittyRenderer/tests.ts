@@ -816,7 +816,11 @@ describe('delta default policy', () => {
     expect(worker.requests[worker.requests.length - 1].meta.transmit).toBe('delta');
   });
 
-  it('unicode placement re-transmits fully on file-medium terminals', async () => {
+  it('unicode placement keeps a=f edits on file-medium terminals with frame-edit support', async () => {
+    // Kitty deletes an image's placements when data is re-transmitted to its
+    // id (spec: "the existing image and all its placements must be deleted"),
+    // so a virtual placement can only update through a=f frame edits there.
+    // The SSH-only delta policy must not apply to the unicode update path.
     await seedAnimationSupported();
     const worker = new FakeEncodeWorker();
     const r = new KittyRenderer({
@@ -833,7 +837,7 @@ describe('delta default policy', () => {
     r.renderRgb24(withPixel(base, 8, 5, 3));
     worker.respond('p');
     const meta = worker.requests[worker.requests.length - 1].meta;
-    expect(meta.transmit).toBe('full');
-    expect(meta.createPlacement).toBe(false); // a=t re-transmit, not a placement recreate
+    expect(meta.transmit).toBe('delta'); // a=f edit, the payload still travels as a raw t=t file
+    expect(meta.medium).toBe('file');
   });
 });

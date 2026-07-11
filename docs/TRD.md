@@ -26,7 +26,9 @@ session, since that is the one case where PTY bandwidth is the bottleneck a
 delta actually relieves. A local kitty or Ghostty passes the shared-filesystem
 probe instead, so both get full re-transmits delivered as files, raw pixels by
 default rather than PNG. A terminal with neither capability gets plain
-streamed full frames. Every combination renders correctly, and every probe can be
+streamed full frames. Unicode placement is the one exception to the delta
+policy, updating through `a=f` frame edits on any kitty (see the placement
+section). Every combination renders correctly, and every probe can be
 overridden per option (`dirtyRects`, `fileTransfer`, `compression`).
 
 ## Which layer do I want?
@@ -281,17 +283,19 @@ controls in other rows, and the host must not repaint the video rows.
 `placement: "unicode"` removes the single-compositor restriction by handing
 layout to the host. The image is transmitted once as a virtual placement
 (`a=T,U=1` with `c`/`r` from the region grid and no cursor move), then only
-pixels update. How they update follows the same delta policy as the
-cursor-positioned path. SSH kitty (animation protocol available, file medium
-unavailable) animates them through the existing dirty-rect `a=f` frame edits (a
-full `a=T` re-transmit to the same id would delete its placements, so the
-renderer never uses one to update there). Local kitty and Ghostty both
-re-transmit the whole image to the same id with `a=t` instead. Local kitty has
-the file medium, so it falls outside the default delta policy the same way the
-cursor-positioned path does. Ghostty has no animation protocol at all, so
-`detectKittyAnimationSupport()` always returns false there and an `a=f` edit
-would be ignored. Either terminal composites the re-transmit into the existing
-placement in place, so there is no delete and no flicker. Either way it uses a
+pixels update. How they update does NOT follow the cursor path's SSH-only
+delta policy, because the graphics protocol deletes an image and all its
+placements when data is re-transmitted to its id. Kitty enforces that rule,
+so on any kitty (local or SSH) the renderer animates virtual placements
+through `a=f` frame edits, the one in-place update a placement survives. On
+local kitty those edits still carry their payloads as raw `t=t` files, which
+keeps the PNG decode out of kitty's main thread even though the per-edit
+disk-cache compose remains kitty's design. Ghostty has no animation protocol
+at all, so `detectKittyAnimationSupport()` always returns false there and an
+`a=f` edit would be ignored. It instead re-transmits the whole image to the
+same id with `a=t`, and deviates from the spec's deletion rule by compositing
+the re-transmit into the existing placement in place, so there is no delete
+and no flicker. Either way it uses a
 single stable image id (no double-buffer). The host renders
 the placeholder cells returned by
 `getPlaceholderRows()` as ordinary text, and the terminal fills whichever cells
