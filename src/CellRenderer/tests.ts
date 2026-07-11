@@ -991,6 +991,68 @@ describe('CellRenderer region and embedded', () => {
   });
 });
 
+describe('CellRenderer bounded spread effects', () => {
+  const randomFrame = (w: number, h: number, seed: number): Uint8Array => {
+    const frame = new Uint8Array(w * h * 3);
+    let s = seed;
+    for (let i = 0; i < frame.length; i++) {
+      s = (s * 1_103_515_245 + 12_345) & 0x7fffffff;
+      frame[i] = (s >> 16) & 0xff;
+    }
+    return frame;
+  };
+
+  const withPixel = (frame: Uint8Array, width: number, x: number, y: number): Uint8Array => {
+    const copy = Uint8Array.from(frame);
+    copy.set([255, 255, 255], (y * width + x) * 3);
+    return copy;
+  };
+
+  it('matches unbounded processing under bounded spread effects', () => {
+    const opts = {
+      sourceWidth: 32, sourceHeight: 32,
+      renderMode: 'half-block' as const, limitColors: 0 as const,
+      layout: { cols: 16, rows: 8, offsetCol: 1, offsetRow: 1 },
+      bloom: 0.6, bloomThreshold: 0.2, ntsc: 0.5, scanlines: 0.4,
+    };
+    const messages: string[] = [];
+    const bounded = new CellRenderer({ ...opts, onDebug: (m) => messages.push(m) });
+    const control = new CellRenderer({ ...opts, enableDiffRendering: false });
+    const base = randomFrame(32, 32, 7);
+    expect(bounded.renderRgb24(base)).toBe(control.renderRgb24(base));
+    for (const [x, y] of [[20, 12], [0, 0], [31, 31]] as const) {
+      expect(bounded.renderRgb24(withPixel(base, 32, x, y)))
+        .toBe(control.renderRgb24(withPixel(base, 32, x, y)));
+      expect(bounded.renderRgb24(base)).toBe(control.renderRgb24(base));
+    }
+    // The delta path stayed active under spread effects: single-pixel changes
+    // produce diff paints re-mapping only a small cell region, not full paints
+    const diffCounts = messages
+      .map((m) => m.match(/diff, cells=(\d+)/u))
+      .filter((m): m is RegExpMatchArray => m !== null)
+      .map((m) => Number(m[1]));
+    expect(diffCounts.length).toBeGreaterThan(0);
+    for (const count of diffCounts) {
+      expect(count).toBeLessThan(16 * 8);
+    }
+  });
+
+  it('still repaints the full grid under curvature', () => {
+    const opts = {
+      sourceWidth: 32, sourceHeight: 32,
+      renderMode: 'half-block' as const, limitColors: 0 as const,
+      layout: { cols: 16, rows: 8, offsetCol: 1, offsetRow: 1 },
+      curvature: 0.3,
+    };
+    const bounded = new CellRenderer(opts);
+    const control = new CellRenderer({ ...opts, enableDiffRendering: false });
+    const base = randomFrame(32, 32, 7);
+    expect(bounded.renderRgb24(base)).toBe(control.renderRgb24(base));
+    expect(bounded.renderRgb24(withPixel(base, 32, 16, 16)))
+      .toBe(control.renderRgb24(withPixel(base, 32, 16, 16)));
+  });
+});
+
 describe('CellRenderer placeholder rows', () => {
   it('has no Unicode placeholders (cell mode draws no Kitty images)', () => {
     const renderer = new CellRenderer({ sourceWidth: 4, sourceHeight: 4, renderMode: 'half-block' });

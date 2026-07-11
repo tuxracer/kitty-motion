@@ -137,6 +137,9 @@ export class CellRenderer {
   private boxX1!: Int32Array;
   // Per-column source center for nearest sampling, precomputed like boxX0
   private centerX!: Int32Array;
+  // Pre-effect pixels for the bounded-spread path (null unless bloom, NTSC,
+  // or chromatic aberration is enabled without curvature)
+  private preEffectBuffer: Uint8Array | null;
   private prevFrameBuffer: Uint8Array | Uint16Array;
   // Force the next frame to repaint every cell (first frame, resize)
   private needsFullPaint: boolean = true;
@@ -163,6 +166,7 @@ export class CellRenderer {
     this.postProcessing = common.postProcessing;
     this.prevFrameBuffer = common.prevFrameBuffer;
     this.nativeRgbBuffer = common.nativeRgbBuffer;
+    this.preEffectBuffer = common.preEffectBuffer;
     this.region = common.region;
     this.embedded = common.embedded;
 
@@ -668,21 +672,46 @@ export class CellRenderer {
       }
     }
 
-    // Convert and post-process only within the dirty rect when effects are
-    // pointwise: pixels outside it are unchanged since the last frame, so
-    // nativeRgbBuffer already holds their processed values (downsample's
-    // padded bounds may re-read them, which is safe for the same reason)
+    // Convert and post-process only within the dirty rect when the damage
+    // to the output is boundable: pixels outside it are unchanged since the
+    // last frame, so nativeRgbBuffer already holds their processed values
+    // (downsample's padded bounds may re-read them, which is safe for the
+    // same reason). Bounded spread effects (preEffectBuffer allocated) keep
+    // this valid via reach dilation; unbounded ones (curvature) force the
+    // full frame.
+    const preEffect = this.preEffectBuffer;
     const processRect =
-      dirtyRect !== null && !this.postProcessing.hasNonLocalEffects() ? dirtyRect : undefined;
-    convertFrameToRgb24(frameBuffer, this.nativeRgbBuffer, {
-      colorSpace,
-      width: this.sourceWidth,
-      height: this.sourceHeight,
-      gammaLUT: this.gammaLUT,
-      hasIdentityGamma: this.hasIdentityGamma,
-      colorEnabled: this.colorEnabled,
-      rect: processRect,
-    });
+      dirtyRect !== null && (preEffect !== null || !this.postProcessing.hasNonLocalEffects())
+        ? dirtyRect
+        : undefined;
+    // The output region whose cells must re-map (dilated by the effect
+    // reach when spread effects are on)
+    let effectRect: Rect | null = processRect ?? null;
+    if (preEffect !== null) {
+      convertFrameToRgb24(frameBuffer, preEffect, {
+        colorSpace,
+        width: this.sourceWidth,
+        height: this.sourceHeight,
+        gammaLUT: this.gammaLUT,
+        hasIdentityGamma: this.hasIdentityGamma,
+        colorEnabled: this.colorEnabled,
+        rect: processRect,
+      });
+      const damage = processRect ?? { x: 0, y: 0, width: this.sourceWidth, height: this.sourceHeight };
+      const processedRect = this.postProcessing.applyToRect(
+        preEffect, this.nativeRgbBuffer, this.sourceWidth, this.sourceHeight, damage);
+      effectRect = processRect !== undefined ? processedRect : null;
+    } else {
+      convertFrameToRgb24(frameBuffer, this.nativeRgbBuffer, {
+        colorSpace,
+        width: this.sourceWidth,
+        height: this.sourceHeight,
+        gammaLUT: this.gammaLUT,
+        hasIdentityGamma: this.hasIdentityGamma,
+        colorEnabled: this.colorEnabled,
+        rect: processRect,
+      });
+    }
     // Pixels outside the dirty rect are already equal in prevFrameBuffer,
     // so syncing it only needs the dirty row span
     if (dirtyRect === null) {
@@ -693,17 +722,16 @@ export class CellRenderer {
       const dirtyEnd = (dirtyRect.y + dirtyRect.height) * rowUnits;
       this.prevFrameBuffer.set(frameBuffer.subarray(dirtyStart, dirtyEnd), dirtyStart);
     }
-    this.postProcessing.apply(this.nativeRgbBuffer, this.sourceWidth, this.sourceHeight, processRect);
+    if (preEffect === null) {
+      this.postProcessing.apply(this.nativeRgbBuffer, this.sourceWidth, this.sourceHeight, processRect);
+    }
 
-    // With a dirty rect and only pointwise effects, cells outside the rect
-    // cannot have changed: downsample and re-map only the affected region.
-    // Effects that spread pixel influence (bloom, NTSC, curvature, chromatic
-    // aberration) invalidate that assumption, so they force the full grid.
+    // With a boundable output region, cells outside it cannot have changed:
+    // downsample and re-map only the affected region. Curvature (unbounded)
+    // forces the full grid.
     const partialBounds =
-      dirtyRect !== null &&
-      !this.postProcessing.hasNonLocalEffects() &&
-      !isFullFrameRect(dirtyRect, this.sourceWidth, this.sourceHeight)
-        ? this.cellBoundsFor(dirtyRect)
+      effectRect !== null && !isFullFrameRect(effectRect, this.sourceWidth, this.sourceHeight)
+        ? this.cellBoundsFor(effectRect)
         : null;
     if (partialBounds === null) {
       this.resample(this.fullCellBounds());
