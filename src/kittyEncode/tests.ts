@@ -380,9 +380,9 @@ describe('KittyFrameEncoder', () => {
     expect(decoded.pixels).toEqual(frame);
   });
 
-  it('writes the PNG to the file and sends only the base64 path for the file medium', () => {
+  it('writes raw pixels to the file and sends only the base64 path for the file medium', () => {
     const dir = mkdtempSync(join(tmpdir(), 'kitty-encode-test-'));
-    const filePath = join(dir, 'frame-1.png');
+    const filePath = join(dir, 'frame-1.raw');
     try {
       const frame = makeFrame();
       const meta = makeMeta({ medium: 'file', filePath });
@@ -391,11 +391,13 @@ describe('KittyFrameEncoder', () => {
       const [first] = parseEscapes(payload);
       expect(first.control).toContain('a=T');
       expect(first.control).toContain('t=t');
+      expect(first.control).toContain('f=24');
+      expect(first.control).toContain('s=4,v=4');
+      expect(first.control).not.toContain('f=100');
       expect(first.control).not.toContain('m=');
       expect(first.data).toBe(Buffer.from(filePath).toString('base64'));
 
-      const decoded = decodePng(readFileSync(filePath));
-      expect(decoded.pixels).toEqual(frame);
+      expect(new Uint8Array(readFileSync(filePath))).toEqual(frame);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -420,8 +422,9 @@ describe('KittyFrameEncoder', () => {
 
   it('sends delta frames over the file medium with the frame-edit control keys', () => {
     const dir = mkdtempSync(join(tmpdir(), 'kitty-encode-test-'));
-    const filePath = join(dir, 'delta-1.png');
+    const filePath = join(dir, 'delta-1.raw');
     try {
+      const frame = makeFrame();
       const meta = makeMeta({
         medium: 'file',
         filePath,
@@ -429,7 +432,7 @@ describe('KittyFrameEncoder', () => {
         dirtyRect: { x: 1, y: 2, width: 2, height: 2 },
         currentImageId: 7,
       });
-      const payload = new KittyFrameEncoder().encode(makeFrame(), meta);
+      const payload = new KittyFrameEncoder().encode(frame, meta);
 
       const [first] = parseEscapes(payload);
       expect(first.control).toContain('a=f');
@@ -439,9 +442,18 @@ describe('KittyFrameEncoder', () => {
       expect(first.data).toBe(Buffer.from(filePath).toString('base64'));
       expect(payload).not.toContain('\x1b['); // no cursor sequences on deltas
 
-      const decoded = decodePng(readFileSync(filePath));
-      expect(decoded.width).toBe(2);
-      expect(decoded.height).toBe(2);
+      expect(first.control).toContain('f=24');
+      expect(first.control).toContain('s=2,v=2');
+
+      // The file holds the 2x2 rect's raw pixels cropped from the frame
+      const expected = new Uint8Array(2 * 2 * RGB);
+      for (let y = 0; y < 2; y++) {
+        for (let x = 0; x < 2; x++) {
+          const src = ((2 + y) * 4 + (1 + x)) * RGB;
+          expected.set(frame.subarray(src, src + RGB), (y * 2 + x) * RGB);
+        }
+      }
+      expect(new Uint8Array(readFileSync(filePath))).toEqual(expected);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -456,6 +468,7 @@ describe('KittyFrameEncoder', () => {
     expect(first.control).toContain('a=T');
     expect(first.control).toContain('m=0');
     expect(first.control).not.toContain('t=t');
+    expect(first.control).toContain('f=100'); // fallback is inline PNG, not inline raw
     expect(decodePng(extractPng(payload)).pixels).toEqual(frame); // inline data, fully decodable
   });
 
@@ -471,6 +484,7 @@ describe('KittyFrameEncoder', () => {
       const [first] = parseEscapes(payload);
       expect(first.control).toContain('m=0');
       expect(first.control).not.toContain('t=t');
+      expect(first.control).toContain('f=100'); // fallback is inline PNG, not inline raw
       expect(decodePng(extractPng(payload)).pixels).toEqual(frame); // inline data, fully decodable
       expect(readFileSync(filePath, 'utf8')).toBe('not a real png'); // wx refused to overwrite it
     } finally {

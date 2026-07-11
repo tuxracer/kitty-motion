@@ -17,8 +17,8 @@ import { APC, ST, moveCursor } from '../ansi/index.ts';
 import { buildKittyDeleteSequence } from '../kittyProtocol/index.ts';
 import { isFullFrameRect } from '../dirtyRect/index.ts';
 import { RGB24_BYTES_PER_PIXEL } from '../consts.ts';
-import { FILE_MEDIUM_FOR_DELTAS, KITTY_CHUNK_SIZE } from './consts.ts';
-import type { KittyFrameMeta, EncodeJob, PngEncodeParams } from './types.ts';
+import { FILE_MEDIUM_FOR_DELTAS, KITTY_CHUNK_SIZE, ZLIB_DEFLATE_LEVEL } from './consts.ts';
+import type { KittyFrameMeta, EncodeJob, PngEncodeParams, KittyCompression } from './types.ts';
 
 export * from './types.ts';
 export * from './consts.ts';
@@ -45,8 +45,7 @@ export class KittyFrameEncoder {
   private ihdrBuffer: Buffer = Buffer.alloc(PNG_IHDR_LENGTH);
 
   encode(nativeRgb: Uint8Array, meta: KittyFrameMeta): string {
-    const job = this.buildJob(nativeRgb, meta);
-    return this.buildPayload(this.encodePng(job, meta), meta, job);
+    return this.buildPayload(meta, this.buildJob(nativeRgb, meta));
   }
 
   /**
@@ -393,47 +392,79 @@ export class KittyFrameEncoder {
     return this.rawDataBuffer;
   }
 
-  // a=T: transmit and display, f=100: PNG, p=1: placement id,
-  // q=2: suppress response, C=1: don't move cursor,
-  // c/r: display size in cells. The tail is the medium-specific key
-  // (chunking m= for escapes, t=t for files)
-  private buildFullControl(meta: KittyFrameMeta, tail: string): string {
+  // A forced meta.compression wins on every medium; auto sends raw pixels on
+  // the file medium (no encode for this library, no decode for the terminal)
+  // and PNG on the inline escape medium (bandwidth-constrained)
+  private resolveFormat(meta: KittyFrameMeta, medium: 'escape' | 'file'): KittyCompression {
+    return meta.compression ?? (medium === 'file' ? 'none' : 'png');
+  }
+
+  // Produce the payload bytes for the resolved format. Raw formats scale the
+  // pixels and skip PNG entirely; zlib deflates the scaled pixels at a fixed
+  // fast level (an inflate costs the terminal far less than a PNG decode)
+  private encodeData(format: KittyCompression, job: EncodeJob, meta: KittyFrameMeta): Buffer {
+    if (format === 'png') {
+      return this.encodePng(job, meta);
+    }
+    const scaled = this.scaleRgb(job, meta.scale);
+    const byteLength = job.scaledWidth * job.scaledHeight * RGB24_BYTES_PER_PIXEL;
+    const raw = Buffer.from(scaled.buffer, scaled.byteOffset, byteLength);
+    return format === 'zlib' ? deflateSync(raw, { level: ZLIB_DEFLATE_LEVEL }) : raw;
+  }
+
+  // Control-data keys describing the payload format. PNG (f=100) is
+  // self-describing; raw pixels (f=24) carry no header, so s=/v= state the
+  // transmitted dimensions, and o=z marks a deflate-compressed payload
+  private formatKeys(format: KittyCompression, job: EncodeJob): string {
+    if (format === 'png') {
+      return 'f=100';
+    }
+    const raw = `f=24,s=${job.scaledWidth},v=${job.scaledHeight}`;
+    return format === 'zlib' ? `${raw},o=z` : raw;
+  }
+
+  // a=T: transmit and display, p=1: placement id, q=2: suppress response,
+  // C=1: don't move cursor, c/r: display size in cells. The tail is the
+  // medium-specific key (chunking m= for escapes, t=t for files)
+  private buildFullControl(meta: KittyFrameMeta, job: EncodeJob, format: KittyCompression, tail: string): string {
+    const formatPart = this.formatKeys(format, job);
     if (meta.placement === 'unicode') {
       if (meta.createPlacement === false) {
         // Terminal without a=f frame edits (Ghostty): re-transmit the image
         // data to the same id. The existing virtual placement re-composites in
         // place, so the video updates without deleting and recreating the
         // placement (no flicker) and without a cursor move.
-        return `a=t,f=100,i=${meta.currentImageId},q=2,${tail}`;
+        return `a=t,${formatPart},i=${meta.currentImageId},q=2,${tail}`;
       }
       // Virtual placement (U=1): the image is composited over host-rendered
       // placeholder cells, not displayed at the cursor. c/r give the cell grid.
-      return `a=T,U=1,f=100,i=${meta.currentImageId},q=2,c=${meta.displayCols},r=${meta.displayRows},${tail}`;
+      return `a=T,U=1,${formatPart},i=${meta.currentImageId},q=2,c=${meta.displayCols},r=${meta.displayRows},${tail}`;
     }
-    return `a=T,f=100,i=${meta.currentImageId},p=1,q=2,C=1,c=${meta.displayCols},r=${meta.displayRows},${tail}`;
+    return `a=T,${formatPart},i=${meta.currentImageId},p=1,q=2,C=1,c=${meta.displayCols},r=${meta.displayRows},${tail}`;
   }
 
   // a=f: frame data, r=1: edit the root frame (the displayed image),
   // x/y: placement of the rect in scaled pixels, X=1: replace pixels
-  private buildDeltaControl(meta: KittyFrameMeta, job: EncodeJob, tail: string): string {
-    return `a=f,f=100,i=${meta.currentImageId},r=1,x=${job.scaledX},y=${job.scaledY},X=1,q=2,${tail}`;
+  private buildDeltaControl(meta: KittyFrameMeta, job: EncodeJob, format: KittyCompression, tail: string): string {
+    return `a=f,${this.formatKeys(format, job)},i=${meta.currentImageId},r=1,x=${job.scaledX},y=${job.scaledY},X=1,q=2,${tail}`;
   }
 
   // Build the terminal payload. Full frames: cursor move + a=T transmit-and-
   // display + optional delete of the previous double-buffer image. Delta
   // frames: a single a=f root-frame edit composited in place (X=1 replaces
   // pixels), so no cursor move and no delete.
-  private buildPayload(png: Buffer, meta: KittyFrameMeta, job: EncodeJob): string {
+  private buildPayload(meta: KittyFrameMeta, job: EncodeJob): string {
     if (
       meta.medium === 'file' &&
       meta.filePath !== undefined &&
       (meta.transmit === 'full' || FILE_MEDIUM_FOR_DELTAS)
     ) {
+      const format = this.resolveFormat(meta, 'file');
       try {
         // wx: fail if the path already exists, refusing to follow a
         // pre-existing file or symlink planted by another user on a shared /tmp
-        writeFileSync(meta.filePath, png, { flag: 'wx' });
-        return this.buildFilePayload(meta.filePath, meta, job);
+        writeFileSync(meta.filePath, this.encodeData(format, job, meta), { flag: 'wx' });
+        return this.buildFilePayload(meta.filePath, meta, job, format);
       } catch {
         // Temp dir unavailable (full disk, removed dir), or the path already
         // existed (wx refused it): fall back to the inline escape payload for
@@ -441,7 +472,8 @@ export class KittyFrameEncoder {
       }
     }
 
-    const base64 = png.toString('base64');
+    const format = this.resolveFormat(meta, 'escape');
+    const base64 = this.encodeData(format, job, meta).toString('base64');
     const chunks: string[] =
       meta.transmit === 'full' && meta.placement !== 'unicode'
         ? [moveCursor(meta.offsetRow, meta.offsetCol)]
@@ -457,9 +489,9 @@ export class KittyFrameEncoder {
       if (!isFirst) {
         control = more;
       } else if (meta.transmit === 'full') {
-        control = this.buildFullControl(meta, more);
+        control = this.buildFullControl(meta, job, format, more);
       } else {
-        control = this.buildDeltaControl(meta, job, more);
+        control = this.buildDeltaControl(meta, job, format, more);
       }
 
       chunks.push(`${APC}${control};${chunk}${ST}`);
@@ -477,10 +509,10 @@ export class KittyFrameEncoder {
 
   // File-medium payload: the escape carries only the base64-encoded path
   // (t=t: the terminal reads and then deletes the file). Never chunked.
-  private buildFilePayload(filePath: string, meta: KittyFrameMeta, job: EncodeJob): string {
+  private buildFilePayload(filePath: string, meta: KittyFrameMeta, job: EncodeJob, format: KittyCompression): string {
     const encodedPath = Buffer.from(filePath).toString('base64');
     if (meta.transmit === 'full') {
-      const control = this.buildFullControl(meta, 't=t');
+      const control = this.buildFullControl(meta, job, format, 't=t');
       // Unicode placement drives display from placeholder cells: no cursor
       // move to position it and no previous-image delete (no double-buffer).
       const movePrefix =
@@ -491,7 +523,7 @@ export class KittyFrameEncoder {
           : '';
       return `${movePrefix}${APC}${control};${encodedPath}${ST}${deleteChunk}`;
     }
-    const control = this.buildDeltaControl(meta, job, 't=t');
+    const control = this.buildDeltaControl(meta, job, format, 't=t');
     return `${APC}${control};${encodedPath}${ST}`;
   }
 }

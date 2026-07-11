@@ -9,3 +9,10 @@ export const FILE_MEDIUM_FOR_DELTAS: boolean = true;
 
 /** Chunk size for Kitty graphics protocol base64 transmission (256KB) */
 export const KITTY_CHUNK_SIZE = 262_144;
+
+/**
+ * Deflate level for the 'zlib' payload format. Fixed and fast: the format
+ * exists to cut file and PTY size while keeping the terminal's decode down
+ * to an inflate, not to maximize compression.
+ */
+export const ZLIB_DEFLATE_LEVEL = 1;
