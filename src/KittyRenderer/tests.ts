@@ -3,6 +3,7 @@ import { KittyRenderer, IMAGE_ID_STRIDE } from './index.ts';
 import { resetKittyAnimationDetection, resetKittyFileTransferDetection } from '../kittyProtocol/index.ts';
 import { isKittyEncodeRequest, type KittyEncodeRequest } from '../kittyEncode/index.ts';
 import { encodeImageIdFg } from '../placeholder/index.ts';
+import { BLOOM_REACH } from '../postProcessing/index.ts';
 import { FRAME_FILE_PREFIX } from '../frameFiles/index.ts';
 import { existsSync, writeFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -633,5 +634,64 @@ describe('KittyRenderer bounded processing on full transmits', () => {
     messages.length = 0;
     r.renderRgb24(withPixel(base, 8, 2, 2));
     expect(messages.some((m) => m.includes('processRect=0,0 8x8'))).toBe(true);
+  });
+});
+
+describe('KittyRenderer dilated deltas under bounded spread effects', () => {
+  const randomFrame = (w: number, h: number, seed: number): Uint8Array => {
+    const frame = new Uint8Array(w * h * 3);
+    let s = seed;
+    for (let i = 0; i < frame.length; i++) {
+      s = (s * 1_103_515_245 + 12_345) & 0x7fffffff;
+      frame[i] = (s >> 16) & 0xff;
+    }
+    return frame;
+  };
+
+  it('keeps delta frames and dilates the rect by the effect reach', () => {
+    const r = new KittyRenderer({
+      sourceWidth: 32, sourceHeight: 32, scale: 1, dirtyRects: true,
+      fileTransfer: false, bloom: 0.5,
+    });
+    const base = rgbFrame(32, 32, 40);
+    warmup(r, base);
+    const payload = r.renderRgb24(withPixel(base, 32, 16, 16));
+    expect(payload).toContain('a=f');
+    // A 1x1 change at (16,16) dilates by BLOOM_REACH on each side
+    expect(payload).toContain(`x=${16 - BLOOM_REACH},y=${16 - BLOOM_REACH}`);
+  });
+
+  it('matches full-frame processing pixel-for-pixel across a delta sequence', () => {
+    const opts = {
+      sourceWidth: 32, sourceHeight: 32, scale: 1, fileTransfer: false,
+      bloom: 0.6, bloomThreshold: 0.2, ntsc: 0.5, chromaticAberration: 0.5,
+      scanlines: 0.4, vignette: 0.3,
+    };
+    const bounded = new KittyRenderer({ ...opts, dirtyRects: true });
+    const control = new KittyRenderer({ ...opts, enableDiffRendering: false, dirtyRects: false });
+    const base = randomFrame(32, 32, 7);
+    warmup(bounded, base);
+    warmup(control, base);
+    for (const [x, y] of [[20, 12], [3, 3], [30, 30]] as const) {
+      const changed = withPixel(base, 32, x, y);
+      bounded.renderRgb24(changed);
+      control.renderRgb24(changed);
+      expect(bounded.captureRgb().data).toEqual(control.captureRgb().data);
+      bounded.renderRgb24(base);
+      control.renderRgb24(base);
+      expect(bounded.captureRgb().data).toEqual(control.captureRgb().data);
+    }
+  });
+
+  it('keeps full-frame rects while curvature is enabled', () => {
+    const r = new KittyRenderer({
+      sourceWidth: 8, sourceHeight: 8, scale: 1, dirtyRects: true,
+      fileTransfer: false, curvature: 0.3,
+    });
+    const base = rgbFrame(8, 8, 100);
+    warmup(r, base);
+    const payload = r.renderRgb24(withPixel(base, 8, 5, 3));
+    expect(payload).toContain('a=f');
+    expect(payload).toContain('x=0,y=0'); // full-frame edit, not a sub-rect
   });
 });

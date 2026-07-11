@@ -59,6 +59,9 @@ export class KittyRenderer {
   private scaledHeight: number;
   // Pre-allocated RGB buffer for native resolution (before scaling, for post-processing)
   private nativeRgbBuffer: Uint8Array;
+  // Pre-effect pixels for the bounded-spread path (null unless bloom, NTSC,
+  // or chromatic aberration is enabled without curvature)
+  private preEffectBuffer: Uint8Array | null;
   // Previous frame buffer for row-level memoization (skip unchanged rows)
   // For rgb15: Uint16Array (2 bytes per pixel)
   // For rgb24: Uint8Array (3 bytes per pixel)
@@ -126,6 +129,7 @@ export class KittyRenderer {
     this.postProcessing = common.postProcessing;
     this.prevFrameBuffer = common.prevFrameBuffer;
     this.nativeRgbBuffer = common.nativeRgbBuffer;
+    this.preEffectBuffer = common.preEffectBuffer;
     this.region = common.region;
     this.embedded = common.embedded;
 
@@ -296,8 +300,8 @@ export class KittyRenderer {
 
   // Convert frame to RGB at native resolution (no scaling), bounded to rect
   // Handles all color spaces: rgb15, rgb24
-  private frameToRgbNative(frameBuffer: FrameBuffer, colorSpace: ColorSpace, rect: Rect): void {
-    convertFrameToRgb24(frameBuffer, this.nativeRgbBuffer, {
+  private frameToRgbNative(frameBuffer: FrameBuffer, colorSpace: ColorSpace, rect: Rect, target: Uint8Array = this.nativeRgbBuffer): void {
+    convertFrameToRgb24(frameBuffer, target, {
       colorSpace,
       width: this.sourceWidth,
       height: this.sourceHeight,
@@ -421,25 +425,43 @@ export class KittyRenderer {
     // unchanged since the last frame, so nativeRgbBuffer already holds
     // their converted, post-processed values. needsFullTransmit marks every
     // diff state reset (first frame, resize, buffer realloc, worker
-    // failure). Effects that spread pixel influence force full processing.
+    // failure). Bounded spread effects (preEffectBuffer allocated) keep the
+    // narrowing valid via reach dilation; unbounded ones (curvature) and
+    // any other non-local case force full processing.
     const boundedRect =
-      !this.needsFullTransmit && !this.postProcessing.hasNonLocalEffects() ? damage : null;
+      !this.needsFullTransmit &&
+      (this.preEffectBuffer !== null || !this.postProcessing.hasNonLocalEffects())
+        ? damage
+        : null;
     const processRect = boundedRect ?? fullFrameRect(this.sourceWidth, this.sourceHeight);
 
-    // The transmitted region: deltas send only the damage, full transmits
-    // re-encode the whole (fully valid) buffer.
+    // The transmitted region: deltas send only the damage (dilated by the
+    // effect reach when spread effects are on), full transmits re-encode
+    // the whole (fully valid) buffer.
     let dirtyRect = fullFrameRect(this.sourceWidth, this.sourceHeight);
-    if (transmit === 'delta' && partialDeltaOk && boundedRect !== null) {
-      dirtyRect = boundedRect;
+    const preEffect = this.preEffectBuffer;
+    if (preEffect !== null) {
+      // Bounded spread effects: convert into the pre-effect buffer (kept
+      // current everywhere by the rect-bounded conversion), then run the
+      // pipeline over the dilated damage, writing final pixels into
+      // nativeRgbBuffer. The returned rect covers every output pixel the
+      // damage can influence.
+      this.frameToRgbNative(frameBuffer, colorSpace, processRect, preEffect);
+      const processedRect = this.postProcessing.applyToRect(
+        preEffect, this.nativeRgbBuffer, this.sourceWidth, this.sourceHeight, processRect);
+      if (transmit === 'delta' && partialDeltaOk && boundedRect !== null) {
+        dirtyRect = processedRect;
+      }
+    } else {
+      this.frameToRgbNative(frameBuffer, colorSpace, processRect);
+      this.postProcessing.apply(this.nativeRgbBuffer, this.sourceWidth, this.sourceHeight, processRect);
+      if (transmit === 'delta' && partialDeltaOk && boundedRect !== null) {
+        dirtyRect = boundedRect;
+      }
     }
-
-    this.frameToRgbNative(frameBuffer, colorSpace, processRect);
 
     // Save current frame for next frame's diff check
     this.prevFrameBuffer.set(frameBuffer);
-
-    // Apply post-processing effects at native resolution (much faster than scaled)
-    this.postProcessing.apply(this.nativeRgbBuffer, this.sourceWidth, this.sourceHeight, processRect);
 
     // Scale + PNG-encode + build the Kitty payload
     const meta = this.buildFrameMeta(transmit, dirtyRect);

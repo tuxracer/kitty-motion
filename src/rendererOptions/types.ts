@@ -48,4 +48,13 @@ export interface ResolvedRendererOptions {
   prevFrameBuffer: FrameBuffer;
   /** Native-resolution RGB working buffer for conversion and post-processing */
   nativeRgbBuffer: Uint8Array;
+  /**
+   * Full-frame RGB24 buffer holding converted, pre-post-processing pixels.
+   * Allocated only when the pipeline has bounded spread effects (bloom,
+   * NTSC, chromatic aberration) and no unbounded ones (curvature): the
+   * renderers then convert into this buffer and run
+   * PostProcessingPipeline.applyToRect from it into nativeRgbBuffer, keeping
+   * dirty-rect rendering valid under those effects. Null otherwise.
+   */
+  preEffectBuffer: Uint8Array | null;
 }

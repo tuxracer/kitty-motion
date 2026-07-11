@@ -21,6 +21,8 @@ export const resolveRendererOptions = (options: RendererOptionsBase): ResolvedRe
   const colorSpace = options.colorSpace ?? 'rgb24';
   const gamma = options.gamma ?? DEFAULT_GAMMA;
   const pixelCount = sourceWidth * sourceHeight;
+  const postProcessing = new PostProcessingPipeline(options);
+  const boundedSpread = postProcessing.hasNonLocalEffects() && !postProcessing.hasUnboundedEffects();
   return {
     sourceWidth,
     sourceHeight,
@@ -34,8 +36,9 @@ export const resolveRendererOptions = (options: RendererOptionsBase): ResolvedRe
     onDebug: options.onDebug,
     gammaLUT: buildGammaLUT(gamma),
     hasIdentityGamma: gamma === DEFAULT_GAMMA,
-    postProcessing: new PostProcessingPipeline(options),
+    postProcessing,
     prevFrameBuffer: allocateFrameBuffer(colorSpace, pixelCount),
     nativeRgbBuffer: new Uint8Array(pixelCount * RGB24_BYTES_PER_PIXEL),
+    preEffectBuffer: boundedSpread ? new Uint8Array(pixelCount * RGB24_BYTES_PER_PIXEL) : null,
   };
 };
