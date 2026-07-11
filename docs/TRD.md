@@ -84,7 +84,7 @@ selects the kitty renderer.
 | `scale` | `number` | `2` | Internal render scale (0.25-4x). Higher values increase PNG quantization fidelity at the cost of CPU |
 | `pixelAspectRatio` | `number` | `1.0` | Source pixel aspect ratio (e.g. `8/7` for NES-style non-square pixels). Combined with the terminal's real cell pixel size for font-independent aspect correction |
 | `reservedRows` | `number` | `0` | Terminal rows to exclude from the display area (e.g. for a status line) |
-| `pngCompressionLevel` | `number` | `5` | Deflate level (1-9). See [Design notes](#compression-level) for the benchmark behind this default |
+| `pngCompressionLevel` | `number` | `5` | Deflate level (1-9). Applies only when the resolved payload format is PNG (the inline default and the file-write fallback, or a forced `compression: "png"`). See [Design notes](#compression-level) for the benchmark behind this default |
 | `colorEnabled` | `boolean` | `true` | When `false`, renders in grayscale |
 | `enableDiffRendering` | `boolean` | `true` | Skip re-encoding frames that are pixel-identical to the previous frame |
 | `dirtyRects` | `boolean` | `undefined` | Delta frames (`a=f` edits). `undefined` enables them only when `detectKittyAnimationSupport()` passed and the file medium is unavailable. Deltas save PTY bytes but cost kitty a full-frame disk round trip per edit, so by default they are used only where bandwidth is the bottleneck (SSH). `true`/`false` overrides. Deltas still require `enableDiffRendering` and an integer `scale` of 1 or more |
