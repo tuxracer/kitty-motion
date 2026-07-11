@@ -1,6 +1,6 @@
 {
   "name": "kitty-motion",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Render video and games in the terminal. Kitty graphics where supported, colored half-blocks everywhere else.",
   "keywords": [
     "kitty",
