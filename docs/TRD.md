@@ -130,7 +130,7 @@ For building a custom pipeline instead of using `Screen`:
 - `detectKittyFileTransferSupport`, `getKittyFileTransferSupported`, `resetKittyFileTransferDetection`: shared-filesystem detection for file-based frame transmission
 - `detectKittyUnicodePlaceholderSupport`: env-based, advisory check for Kitty Unicode placeholder placement (Kitty and Ghostty). Opting into `placement: "unicode"` is the real gate
 - `buildPlaceholderRows`, `encodeImageIdFg`, `PLACEHOLDER_CHAR`, `PlaceholderError`, `isPlaceholderError`, `PlaceholderErrorCode`: build the `U+10EEEE` placeholder cells for Kitty Unicode placement (one string per grid row, image id encoded in the foreground color) and the typed error they can throw
-- `computeDirtyRect`, `unionRects`, `fullFrameRect`, `isFullFrameRect`, `Rect`: changed-region bounding-box helpers behind dirty-rect delta rendering
+- `computeDirtyRect`, `unionRects`, `dilateRect`, `fullFrameRect`, `isFullFrameRect`, `Rect`: changed-region bounding-box helpers behind dirty-rect delta rendering
 - `OutputGate`, `DrainableStream`: backpressure-aware writable wrapper that drops frames instead of queueing them
 - `PostProcessingPipeline`, `EffectOptions`: the post-processing effects pipeline (color grading plus CRT-style effects)
 - `detectColorDepth`, `ColorDepth`: environment-based SGR color depth detection

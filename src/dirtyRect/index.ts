@@ -27,6 +27,18 @@ export const unionRects = (a: Rect, b: Rect): Rect => {
   };
 };
 
+/** Rect grown by dx/dy on every side, clamped to the frame bounds */
+export const dilateRect = (rect: Rect, dx: number, dy: number, width: number, height: number): Rect => {
+  const x = Math.max(0, rect.x - dx);
+  const y = Math.max(0, rect.y - dy);
+  return {
+    x,
+    y,
+    width: Math.min(width, rect.x + rect.width + dx) - x,
+    height: Math.min(height, rect.y + rect.height + dy) - y,
+  };
+};
+
 // Zero-copy byte view over a frame buffer's memory. Buffer.compare is a
 // native memcmp, an order of magnitude faster than an elementwise JS loop
 // on the row scans, whose worst case (an unchanged frame) compares every

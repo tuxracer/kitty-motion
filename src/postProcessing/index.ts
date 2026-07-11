@@ -29,7 +29,7 @@
 /* eslint-disable @typescript-eslint/no-magic-numbers */
 
 import { clamp } from '../helpers/index.ts';
-import type { Rect } from '../dirtyRect/index.ts';
+import { dilateRect, type Rect } from '../dirtyRect/index.ts';
 import {
   DEFAULT_BLOOM_THRESHOLD,
   LUMA_R_INT, LUMA_G_INT, LUMA_B_INT,
@@ -37,13 +37,15 @@ import {
   NTSC_CHROMA_BLUR_RADIUS,
   BLOOM_BLUR_RADIUS,
   CHROMATIC_ABERRATION_OFFSET_SCALE,
+  NTSC_REACH_X,
+  BLOOM_REACH,
   YIQ_I_R, YIQ_I_G, YIQ_I_B,
   YIQ_Q_R, YIQ_Q_G, YIQ_Q_B,
   YIQ_INV_R_I, YIQ_INV_R_Q,
   YIQ_INV_G_I, YIQ_INV_G_Q,
   YIQ_INV_B_I, YIQ_INV_B_Q,
 } from './consts.ts';
-import type { EffectOptions, ColorAdjustLUTs } from './types.ts';
+import type { EffectOptions, ColorAdjustLUTs, EffectReach } from './types.ts';
 
 export * from './consts.ts';
 export * from './types.ts';
@@ -81,6 +83,9 @@ export class PostProcessingPipeline {
   private ntscChromaBuffer: Int32Array | null = null;
   private ntscTempRow: Int32Array | null = null;
   private chromaticAberrationSrcBuffer: Uint8Array | null = null;
+
+  // Full-frame working buffer for applyToRect (pooled)
+  private workBuffer: Uint8Array | null = null;
 
   // Chromatic aberration map (precomputed for performance)
   // Stores source pixel indices: [redSrcIdx, blueSrcIdx] pairs for each destination pixel
@@ -141,6 +146,40 @@ export class PostProcessingPipeline {
   }
 
   /**
+   * True when an enabled effect's influence has no useful bound. Curvature
+   * remaps pixels across the whole frame, so dirty-rect rendering must stay
+   * full-frame while it is active. The other spread effects (bloom, NTSC,
+   * chromatic aberration) have bounded reaches, see effectReach().
+   */
+  hasUnboundedEffects(): boolean {
+    return this.curvature > 0;
+  }
+
+  /**
+   * Combined worst-case influence radius, in source pixels per axis, of the
+   * enabled bounded spread effects. Zero when only pointwise effects are
+   * enabled. Reaches add because each pass can spread the previous pass's
+   * output. Meaningless while hasUnboundedEffects() is true.
+   */
+  effectReach(): EffectReach {
+    let x = 0;
+    let y = 0;
+    if (this.ntsc > 0) {
+      x += NTSC_REACH_X;
+    }
+    if (this.chromaticAberration > 0) {
+      const offset = Math.ceil(this.chromaticAberration * CHROMATIC_ABERRATION_OFFSET_SCALE);
+      x += offset;
+      y += offset;
+    }
+    if (this.bloom > 0) {
+      x += BLOOM_REACH;
+      y += BLOOM_REACH;
+    }
+    return { x, y };
+  }
+
+  /**
    * Apply all post-processing effects to the RGB buffer.
    *
    * Effect combination strategy (to minimize full-image iterations):
@@ -176,10 +215,10 @@ export class PostProcessingPipeline {
     this.applyColorAdjustments(buffer, width, bounds);
 
     // 2. NTSC artifacts (chroma blur for color bleeding effect)
-    this.applyNtscArtifacts(buffer, width, height);
+    this.applyNtscArtifacts(buffer, width, height, bounds);
 
     // 3. Chromatic aberration (RGB fringing toward edges)
-    this.applyChromaticAberration(buffer, width, height);
+    this.applyChromaticAberration(buffer, width, height, bounds);
 
     // 4. Spatial effects: curvature, scanlines, vignette
     // These are combined where possible to reduce iterations
@@ -192,12 +231,63 @@ export class PostProcessingPipeline {
     }
 
     // 5. Bloom (glow from bright areas) - combines vignette if enabled
-    this.applyBloom(buffer, width, height);
+    this.applyBloom(buffer, width, height, bounds);
 
     // 6. Apply any effects that weren't combined into earlier passes
     // (these methods check the flags internally and return early if already applied)
     this.applyScanlines(buffer, width, bounds);
     this.applyVignette(buffer, width, height, bounds);
+  }
+
+  // Copy a rect's rows between two full-frame RGB24 buffers of the same geometry
+  private copyRect(src: Uint8Array, dst: Uint8Array, width: number, rect: Rect): void {
+    const rowBytes = rect.width * 3;
+    const yEnd = rect.y + rect.height;
+    for (let y = rect.y; y < yEnd; y++) {
+      const start = (y * width + rect.x) * 3;
+      dst.set(src.subarray(start, start + rowBytes), start);
+    }
+  }
+
+  /**
+   * Rect-bounded processing for bounded spread effects (bloom, NTSC,
+   * chromatic aberration), keeping dirty-rect deltas valid while they are
+   * enabled. Reads pre-effect pixels from src, runs every enabled pass over
+   * the damage rect dilated by twice the combined effect reach (so every
+   * pass's input halo holds valid values), and writes final pixels into dst
+   * over the damage rect dilated once, which is returned as the transmit
+   * rect. dst is never touched outside the returned rect. src must hold
+   * converted, pre-post-processing pixels for at least the double-dilated
+   * region. Do not call while hasUnboundedEffects() is true (curvature has
+   * no useful bound); callers keep full-frame apply() there.
+   */
+  applyToRect(src: Uint8Array, dst: Uint8Array, width: number, height: number, damage: Rect): Rect {
+    const reach = this.effectReach();
+    const outRect = dilateRect(damage, reach.x, reach.y, width, height);
+    const workRect = dilateRect(outRect, reach.x, reach.y, width, height);
+
+    const size = width * height * 3;
+    if (this.workBuffer === null || this.workBuffer.length !== size) {
+      this.workBuffer = new Uint8Array(size);
+    }
+    const work = this.workBuffer;
+    this.copyRect(src, work, width, workRect);
+
+    // Same pass order as apply(), minus curvature (excluded by contract)
+    this.scanlinesApplied = false;
+    this.vignetteApplied = false;
+    this.applyColorAdjustments(work, width, workRect);
+    this.applyNtscArtifacts(work, width, height, workRect);
+    this.applyChromaticAberration(work, width, height, workRect);
+    if (this.scanlineIntensity > 0 || (this.vignette > 0 && this.bloom <= 0)) {
+      this.applyScanlinesAndVignette(work, width, height, workRect);
+    }
+    this.applyBloom(work, width, height, workRect);
+    this.applyScanlines(work, width, workRect);
+    this.applyVignette(work, width, height, workRect);
+
+    this.copyRect(work, dst, width, outRect);
+    return outRect;
   }
 
   /**
@@ -540,7 +630,7 @@ export class PostProcessingPipeline {
   /**
    * Apply bloom/glow effect.
    */
-  private applyBloom(buffer: Uint8Array, width: number, height: number): void {
+  private applyBloom(buffer: Uint8Array, width: number, height: number, bounds: Rect): void {
     if (this.bloom <= 0) {return;}
 
     const intensity256 = (this.bloom * 256) | 0;
@@ -552,6 +642,14 @@ export class PostProcessingPipeline {
     const halfRowBytes = halfW * 3;
     const halfBufferSize = halfW * halfH * 3;
 
+    const radius = BLOOM_BLUR_RADIUS;
+    // Half-res processing window: the bounds' projection plus the blur
+    // margin, clamped. With full-frame bounds this is the whole half grid.
+    const hx0 = Math.max(0, (bounds.x >> 1) - radius - 1);
+    const hx1 = Math.min(halfW, ((bounds.x + bounds.width + 1) >> 1) + radius + 1);
+    const hy0 = Math.max(0, (bounds.y >> 1) - radius - 1);
+    const hy1 = Math.min(halfH, ((bounds.y + bounds.height + 1) >> 1) + radius + 1);
+
     this.bloomBuffer = this.ensureUint8Buffer(this.bloomBuffer, halfBufferSize);
     this.bloomTempRow = this.ensureUint8Buffer(this.bloomTempRow, halfRowBytes);
     this.bloomTempCol = this.ensureUint8Buffer(this.bloomTempCol, halfH * 3);
@@ -562,10 +660,10 @@ export class PostProcessingPipeline {
 
     // Downsample and extract bright pixels
     const thresholdRange = 255 - threshold || 1;
-    for (let hy = 0; hy < halfH; hy++) {
+    for (let hy = hy0; hy < hy1; hy++) {
       const sy = hy * 2;
       const sy1 = Math.min(sy + 1, height - 1);
-      for (let hx = 0; hx < halfW; hx++) {
+      for (let hx = hx0; hx < hx1; hx++) {
         const sx = hx * 2;
         const sx1 = Math.min(sx + 1, width - 1);
 
@@ -595,34 +693,33 @@ export class PostProcessingPipeline {
     }
 
     // Horizontal blur
-    const radius = BLOOM_BLUR_RADIUS;
-    for (let y = 0; y < halfH; y++) {
+    for (let y = hy0; y < hy1; y++) {
       const rowStart = y * halfRowBytes;
       let sumR = 0, sumG = 0, sumB = 0;
-      for (let dx = 0; dx <= radius && dx < halfW; dx++) {
+      for (let dx = hx0; dx <= hx0 + radius && dx < hx1; dx++) {
         const idx = rowStart + dx * 3;
         sumR += bloom[idx];
         sumG += bloom[idx + 1];
         sumB += bloom[idx + 2];
       }
-      let windowSize = Math.min(radius + 1, halfW);
+      let windowSize = Math.min(radius + 1, hx1 - hx0);
 
-      for (let x = 0; x < halfW; x++) {
-        const outIdx = x * 3;
+      for (let x = hx0; x < hx1; x++) {
+        const outIdx = (x - hx0) * 3;
         tempRow[outIdx] = (sumR / windowSize) | 0;
         tempRow[outIdx + 1] = (sumG / windowSize) | 0;
         tempRow[outIdx + 2] = (sumB / windowSize) | 0;
 
         const leftX = x - radius;
         const rightX = x + radius + 1;
-        if (leftX >= 0) {
+        if (leftX >= hx0) {
           const leftIdx = rowStart + leftX * 3;
           sumR -= bloom[leftIdx];
           sumG -= bloom[leftIdx + 1];
           sumB -= bloom[leftIdx + 2];
           windowSize--;
         }
-        if (rightX < halfW) {
+        if (rightX < hx1) {
           const rightIdx = rowStart + rightX * 3;
           sumR += bloom[rightIdx];
           sumG += bloom[rightIdx + 1];
@@ -630,37 +727,37 @@ export class PostProcessingPipeline {
           windowSize++;
         }
       }
-      bloom.set(tempRow.subarray(0, halfRowBytes), rowStart);
+      bloom.set(tempRow.subarray(0, (hx1 - hx0) * 3), rowStart + hx0 * 3);
     }
 
     // Vertical blur
-    for (let x = 0; x < halfW; x++) {
+    for (let x = hx0; x < hx1; x++) {
       const xOffset = x * 3;
       let sumR = 0, sumG = 0, sumB = 0;
-      for (let dy = 0; dy <= radius && dy < halfH; dy++) {
+      for (let dy = hy0; dy <= hy0 + radius && dy < hy1; dy++) {
         const idx = dy * halfRowBytes + xOffset;
         sumR += bloom[idx];
         sumG += bloom[idx + 1];
         sumB += bloom[idx + 2];
       }
-      let windowSize = Math.min(radius + 1, halfH);
+      let windowSize = Math.min(radius + 1, hy1 - hy0);
 
-      for (let y = 0; y < halfH; y++) {
-        const outIdx = y * 3;
+      for (let y = hy0; y < hy1; y++) {
+        const outIdx = (y - hy0) * 3;
         tempCol[outIdx] = (sumR / windowSize) | 0;
         tempCol[outIdx + 1] = (sumG / windowSize) | 0;
         tempCol[outIdx + 2] = (sumB / windowSize) | 0;
 
         const topY = y - radius;
         const bottomY = y + radius + 1;
-        if (topY >= 0) {
+        if (topY >= hy0) {
           const topIdx = topY * halfRowBytes + xOffset;
           sumR -= bloom[topIdx];
           sumG -= bloom[topIdx + 1];
           sumB -= bloom[topIdx + 2];
           windowSize--;
         }
-        if (bottomY < halfH) {
+        if (bottomY < hy1) {
           const bottomIdx = bottomY * halfRowBytes + xOffset;
           sumR += bloom[bottomIdx];
           sumG += bloom[bottomIdx + 1];
@@ -669,8 +766,8 @@ export class PostProcessingPipeline {
         }
       }
 
-      for (let y = 0; y < halfH; y++) {
-        const srcIdx = y * 3;
+      for (let y = hy0; y < hy1; y++) {
+        const srcIdx = (y - hy0) * 3;
         const dstIdx = y * halfRowBytes + xOffset;
         bloom[dstIdx] = tempCol[srcIdx];
         bloom[dstIdx + 1] = tempCol[srcIdx + 1];
@@ -685,13 +782,15 @@ export class PostProcessingPipeline {
       this.ensureVignetteMap(width, height);
       const vmap = this.vignetteMap!;
 
-      for (let y = 0; y < height; y++) {
+      const yEnd = bounds.y + bounds.height;
+      const xEnd = bounds.x + bounds.width;
+      for (let y = bounds.y; y < yEnd; y++) {
         const hy = y >> 1;
         const srcRowStart = hy * halfRowBytes;
         const dstRowStart = y * rowBytes;
         const vignetteRowStart = y * width;
 
-        for (let x = 0; x < width; x++) {
+        for (let x = bounds.x; x < xEnd; x++) {
           const hx = x >> 1;
           const bloomIdx = srcRowStart + hx * 3;
           const dstIdx = dstRowStart + x * 3;
@@ -708,12 +807,14 @@ export class PostProcessingPipeline {
       }
       this.vignetteApplied = true;
     } else {
-      for (let y = 0; y < height; y++) {
+      const yEnd = bounds.y + bounds.height;
+      const xEnd = bounds.x + bounds.width;
+      for (let y = bounds.y; y < yEnd; y++) {
         const hy = y >> 1;
         const srcRowStart = hy * halfRowBytes;
         const dstRowStart = y * rowBytes;
 
-        for (let x = 0; x < width; x++) {
+        for (let x = bounds.x; x < xEnd; x++) {
           const hx = x >> 1;
           const bloomIdx = srcRowStart + hx * 3;
           const dstIdx = dstRowStart + x * 3;
@@ -741,7 +842,7 @@ export class PostProcessingPipeline {
    * - I/Q to G: -0.272, -0.647 → -70, -166
    * - I/Q to B: -1.106, 1.703 → -283, 436
    */
-  private applyNtscArtifacts(buffer: Uint8Array, width: number, height: number): void {
+  private applyNtscArtifacts(buffer: Uint8Array, width: number, _height: number, bounds: Rect): void {
     if (this.ntsc <= 0) {return;}
 
     const rowBytes = width * 3;
@@ -760,7 +861,14 @@ export class PostProcessingPipeline {
     const radius = NTSC_CHROMA_BLUR_RADIUS;
     const rowStep = this.scanlineIntensity > 0 ? 2 : 1;
 
-    for (let y = 0; y < height; y += rowStep) {
+    // First processed row: honor the scanline-skip parity (rowStep 2
+    // processes even rows only) while starting inside the bounds
+    const yEnd = bounds.y + bounds.height;
+    let yStart = bounds.y;
+    if (rowStep === 2 && (yStart & 1) === 1) {
+      yStart++;
+    }
+    for (let y = yStart; y < yEnd; y += rowStep) {
       const rowStart = y * rowBytes;
 
       // Extract I and Q chroma components (scaled by 256)
@@ -903,7 +1011,7 @@ export class PostProcessingPipeline {
    * Simulates CRT electron beam convergence errors and lens distortion
    * where different color channels separate toward screen edges.
    */
-  private applyChromaticAberration(buffer: Uint8Array, width: number, height: number): void {
+  private applyChromaticAberration(buffer: Uint8Array, width: number, height: number, bounds: Rect): void {
     if (this.chromaticAberration <= 0) {return;}
 
     this.ensureChromaticAberrationMap(width, height);
@@ -912,25 +1020,30 @@ export class PostProcessingPipeline {
     this.chromaticAberrationSrcBuffer = this.ensureUint8Buffer(this.chromaticAberrationSrcBuffer, bufferSize);
 
     const source = this.chromaticAberrationSrcBuffer;
-    source.set(buffer);
+    // The map's offsets are bounded by the intensity-scaled max offset, so
+    // only the bounds rows plus that vertical margin can be read
+    const reachY = Math.ceil(this.chromaticAberration * CHROMATIC_ABERRATION_OFFSET_SCALE);
+    const copyY0 = Math.max(0, bounds.y - reachY);
+    const copyY1 = Math.min(height, bounds.y + bounds.height + reachY);
+    const rowBytes = width * 3;
+    source.set(buffer.subarray(copyY0 * rowBytes, copyY1 * rowBytes), copyY0 * rowBytes);
 
     const map = this.chromaticAberrationMap!;
-    const pixelCount = width * height;
+    const yEnd = bounds.y + bounds.height;
+    const xEnd = bounds.x + bounds.width;
 
-    for (let i = 0; i < pixelCount; i++) {
-      const mapIdx = i * 2;
-      const redSrcPixel = map[mapIdx];
-      const blueSrcPixel = map[mapIdx + 1];
-      const dstIdx = i * 3;
+    for (let y = bounds.y; y < yEnd; y++) {
+      for (let x = bounds.x; x < xEnd; x++) {
+        const i = y * width + x;
+        const mapIdx = i * 2;
+        const redSrcPixel = map[mapIdx];
+        const blueSrcPixel = map[mapIdx + 1];
+        const dstIdx = i * 3;
 
-      // Sample red from shifted position
-      buffer[dstIdx] = source[redSrcPixel * 3];
-
-      // Green stays at original position
-      buffer[dstIdx + 1] = source[dstIdx + 1];
-
-      // Sample blue from shifted position
-      buffer[dstIdx + 2] = source[blueSrcPixel * 3 + 2];
+        buffer[dstIdx] = source[redSrcPixel * 3];
+        buffer[dstIdx + 1] = source[dstIdx + 1];
+        buffer[dstIdx + 2] = source[blueSrcPixel * 3 + 2];
+      }
     }
   }
 }

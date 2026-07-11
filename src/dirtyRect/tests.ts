@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeDirtyRect, unionRects, fullFrameRect, isFullFrameRect } from './index.ts';
+import { computeDirtyRect, unionRects, fullFrameRect, isFullFrameRect, dilateRect } from './index.ts';
 
 const RGB = 3;
 
@@ -106,5 +106,16 @@ describe('fullFrameRect and isFullFrameRect', () => {
     expect(isFullFrameRect(rect, 8, 4)).toBe(true);
     expect(isFullFrameRect({ x: 0, y: 0, width: 8, height: 3 }, 8, 4)).toBe(false);
     expect(isFullFrameRect({ x: 1, y: 0, width: 8, height: 4 }, 8, 4)).toBe(false);
+  });
+});
+
+describe('dilateRect', () => {
+  it('grows a rect by the given radii and clamps to the frame', () => {
+    expect(dilateRect({ x: 5, y: 5, width: 2, height: 2 }, 3, 1, 20, 20))
+      .toEqual({ x: 2, y: 4, width: 8, height: 4 });
+    expect(dilateRect({ x: 0, y: 18, width: 2, height: 2 }, 4, 4, 20, 20))
+      .toEqual({ x: 0, y: 14, width: 6, height: 6 });
+    expect(dilateRect({ x: 1, y: 1, width: 2, height: 2 }, 0, 0, 20, 20))
+      .toEqual({ x: 1, y: 1, width: 2, height: 2 });
   });
 });

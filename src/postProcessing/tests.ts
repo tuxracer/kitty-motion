@@ -128,3 +128,99 @@ describe('PostProcessingPipeline', () => {
     });
   });
 });
+
+describe('effect reach', () => {
+  it('is zero for pointwise-only pipelines', () => {
+    const p = new PostProcessingPipeline({ scanlines: 0.5, vignette: 0.3, brightness: 1.2, saturation: 0.9 });
+    expect(p.effectReach()).toEqual({ x: 0, y: 0 });
+    expect(p.hasUnboundedEffects()).toBe(false);
+  });
+
+  it('reports curvature as unbounded, other spread effects as bounded', () => {
+    expect(new PostProcessingPipeline({ curvature: 0.2 }).hasUnboundedEffects()).toBe(true);
+    expect(new PostProcessingPipeline({ bloom: 0.5 }).hasUnboundedEffects()).toBe(false);
+    expect(new PostProcessingPipeline({ ntsc: 0.5 }).hasUnboundedEffects()).toBe(false);
+    expect(new PostProcessingPipeline({ chromaticAberration: 0.5 }).hasUnboundedEffects()).toBe(false);
+  });
+
+  it('stacks reaches additively', () => {
+    const solo = new PostProcessingPipeline({ bloom: 0.5 }).effectReach();
+    const stacked = new PostProcessingPipeline({ bloom: 0.5, chromaticAberration: 1 }).effectReach();
+    expect(stacked.x).toBeGreaterThan(solo.x);
+    expect(stacked.y).toBeGreaterThan(solo.y);
+  });
+});
+
+describe('applyToRect', () => {
+  const W = 64;
+  const H = 48;
+
+  // Deterministic pseudo-random frame
+  const randomFrame = (seed: number): Uint8Array => {
+    const frame = new Uint8Array(W * H * 3);
+    let s = seed;
+    for (let i = 0; i < frame.length; i++) {
+      s = (s * 1_103_515_245 + 12_345) & 0x7fffffff;
+      frame[i] = (s >> 16) & 0xff;
+    }
+    return frame;
+  };
+
+  // frameB = frameA with pixels changed only inside damage
+  const withDamage = (frame: Uint8Array, damage: { x: number; y: number; width: number; height: number }): Uint8Array => {
+    const out = frame.slice();
+    for (let y = damage.y; y < damage.y + damage.height; y++) {
+      for (let x = damage.x; x < damage.x + damage.width; x++) {
+        out[(y * W + x) * 3] ^= 0xa5;
+        out[(y * W + x) * 3 + 2] ^= 0x3c;
+      }
+    }
+    return out;
+  };
+
+  const CONFIGS = [
+    { name: 'ntsc', options: { ntsc: 1 } },
+    { name: 'chromatic aberration', options: { chromaticAberration: 1 } },
+    { name: 'bloom', options: { bloom: 1, bloomThreshold: 0 } },
+    {
+      name: 'stacked with pointwise',
+      options: {
+        ntsc: 0.8, chromaticAberration: 1, bloom: 0.7, bloomThreshold: 0.2,
+        scanlines: 0.5, vignette: 0.4, brightness: 1.2, saturation: 1.3, contrast: 1.1,
+      },
+    },
+  ] as const;
+
+  const DAMAGES = [
+    { x: 28, y: 20, width: 4, height: 4 },   // interior
+    { x: 0, y: 0, width: 3, height: 5 },     // corner (dilation clamps)
+    { x: 0, y: 0, width: W, height: H },     // full frame
+  ] as const;
+
+  for (const config of CONFIGS) {
+    for (const damage of DAMAGES) {
+      it(`matches full-frame processing for ${config.name} with damage at ${damage.x},${damage.y}`, () => {
+        const frameA = randomFrame(1);
+        const frameB = withDamage(frameA, damage);
+
+        // Reference: full-frame processing of both frames
+        const processedA = frameA.slice();
+        new PostProcessingPipeline(config.options).apply(processedA, W, H);
+        const processedB = frameB.slice();
+        new PostProcessingPipeline(config.options).apply(processedB, W, H);
+
+        // Bounded: dst starts as processed frame A, applyToRect brings it to frame B
+        const dst = processedA.slice();
+        const pipeline = new PostProcessingPipeline(config.options);
+        const outRect = pipeline.applyToRect(frameB.slice(), dst, W, H, damage);
+
+        // Full equality proves both the in-rect math and that the reach
+        // bound is sufficient (outside outRect, processedA must equal
+        // processedB, and dst was never touched there)
+        expect(dst).toEqual(processedB);
+        expect(outRect.x).toBeLessThanOrEqual(damage.x);
+        expect(outRect.y).toBeLessThanOrEqual(damage.y);
+      });
+    }
+  }
+});

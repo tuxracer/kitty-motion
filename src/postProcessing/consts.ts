@@ -39,3 +39,16 @@ export const BLOOM_BLUR_RADIUS = 2;
 
 /** Scales chromatic aberration intensity to max pixel offset at corners */
 export const CHROMATIC_ABERRATION_OFFSET_SCALE = 3;
+
+/**
+ * Full-resolution horizontal reach of the NTSC chroma blur: the blur radius
+ * in half-width chroma samples plus one for the 2:1 subsampling pairing,
+ * times two to return to full resolution.
+ */
+export const NTSC_REACH_X = (NTSC_CHROMA_BLUR_RADIUS + 1) * 2;
+
+/**
+ * Full-resolution reach of bloom per axis: the box-blur radius in half-res
+ * pixels plus one for the 2x2 downsample pairing, times two.
+ */
+export const BLOOM_REACH = (BLOOM_BLUR_RADIUS + 1) * 2;

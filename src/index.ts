@@ -14,7 +14,7 @@ export { PostProcessingPipeline } from './postProcessing/index.ts';
 export type { EffectOptions } from './postProcessing/index.ts';
 export { computeDisplayLayout } from './displayLayout/index.ts';
 export type { DisplayLayout, DisplayLayoutOptions } from './displayLayout/index.ts';
-export { computeDirtyRect, unionRects, fullFrameRect, isFullFrameRect } from './dirtyRect/index.ts';
+export { computeDirtyRect, unionRects, fullFrameRect, isFullFrameRect, dilateRect } from './dirtyRect/index.ts';
 export type { Rect } from './dirtyRect/index.ts';
 
 // Frame encoding

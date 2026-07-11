@@ -23,6 +23,14 @@ export interface EffectOptions {
   chromaticAberration?: number;
 }
 
+/** Worst-case influence radius of the enabled bounded spread effects, in source pixels per axis */
+export interface EffectReach {
+  /** Horizontal reach in pixels */
+  x: number;
+  /** Vertical reach in pixels */
+  y: number;
+}
+
 /** Precomputed brightness/contrast lookup tables (see ensureColorAdjustLUTs) */
 export interface ColorAdjustLUTs {
   /** Clamped and truncated output bytes, for the saturation-off fast path */
