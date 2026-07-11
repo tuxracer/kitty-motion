@@ -16,7 +16,7 @@ export interface ScreenUpdatableOptions extends EffectOptions {
   colorEnabled?: boolean;
   /** Skip re-encoding frames that are pixel-identical to the previous frame (default: `true`) */
   enableDiffRendering?: boolean;
-  /** Delta frames (a=f frame edits): undefined enables them only when detectKittyAnimationSupport() passed AND the file medium is unavailable (deltas save PTY bytes but cost kitty a full-frame disk round trip per edit, so they only pay off over SSH), true/false overrides; deltas still require enableDiffRendering and an integer scale of 1 or more (default: undefined) */
+  /** Delta frames (a=f frame edits). undefined enables them only when detectKittyAnimationSupport() passed AND the file medium is unavailable (deltas save PTY bytes but cost kitty a full-frame disk round trip per edit, so they only pay off over SSH). true/false overrides. Deltas still require enableDiffRendering and an integer scale of 1 or more (default: undefined) */
   dirtyRects?: boolean;
   /** File-based transmission (t=t): undefined follows detectKittyFileTransferSupport(), true/false forces (default: undefined) */
   fileTransfer?: boolean;

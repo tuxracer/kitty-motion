@@ -269,7 +269,7 @@ export class KittyRenderer {
   }
 
   // Whether frames update via a=f frame edits. The dirtyRects option
-  // overrides; otherwise deltas require the animation protocol AND no file
+  // overrides. Otherwise deltas require the animation protocol AND no file
   // medium. Deltas only save PTY bytes, and kitty pays a full-frame
   // disk-cache round trip per a=f edit, so they only pay for themselves
   // when PTY bandwidth is the bottleneck (SSH, where the file probe fails).

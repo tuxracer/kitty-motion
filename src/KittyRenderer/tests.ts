@@ -762,6 +762,25 @@ describe('delta default policy', () => {
     expect(lastTransmit(true)).toBe('full');
   });
 
+  it('dirtyRects: false forces full transmissions even when the default would pick deltas', async () => {
+    await seedAnimationSupported();
+    const worker = new FakeEncodeWorker();
+    const r = new KittyRenderer({
+      sourceWidth: 8,
+      sourceHeight: 8,
+      scale: 1,
+      dirtyRects: false,
+      fileTransfer: false,
+      encodeWorkerFactory: () => worker,
+    });
+    r.setOutputSink(() => true);
+    const base = rgbFrame(8, 8, 100);
+    warmupWithWorker(r, worker, base);
+    r.renderRgb24(withPixel(base, 8, 5, 3));
+    worker.respond('p');
+    expect(worker.requests[worker.requests.length - 1].meta.transmit).toBe('full');
+  });
+
   it('dirtyRects: true still forces deltas on file-medium terminals', async () => {
     await seedAnimationSupported();
     const worker = new FakeEncodeWorker();
