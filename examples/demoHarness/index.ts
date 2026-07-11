@@ -24,6 +24,7 @@ import {
   type CellSampling,
   type ColorDepth,
   type DrainableStream,
+  type KittyCompression,
   type RenderMode,
 } from "../../src/index.ts";
 import { formatStatusBar, drawStatusBar } from "./statusBar/index.ts";
@@ -132,6 +133,14 @@ export const runDemo = async (demo: Demo): Promise<void> => {
   const fileTransferOverride =
     fileTransferEnv === undefined ? {} : { fileTransfer: envFlagEnabled(fileTransferEnv) };
 
+  // DEMO_COMPRESSION=png, zlib, or none pins the kitty payload format; unset
+  // picks per medium (raw pixels on the file medium, PNG inline)
+  const compressionEnv = process.env["DEMO_COMPRESSION"];
+  const compressionOverride: { compression?: KittyCompression } =
+    compressionEnv === "png" || compressionEnv === "zlib" || compressionEnv === "none"
+      ? { compression: compressionEnv }
+      : {};
+
   // DEMO_LIMIT_COLORS=0 (truecolor), 256, or 16 pins the cell-mode SGR color
   // depth; unset auto-detects from COLORTERM/TERM. Ignored in kitty mode
   const limitColorsEnv = process.env["DEMO_LIMIT_COLORS"];
@@ -159,6 +168,7 @@ export const runDemo = async (demo: Demo): Promise<void> => {
     reservedRows: (demo.screen.reservedRows ?? 0) + 1,
     ...dirtyRectsOverride,
     ...fileTransferOverride,
+    ...compressionOverride,
     ...renderModeOverride,
     ...limitColorsOverride,
     ...cellSamplingOverride,
@@ -213,6 +223,10 @@ export const runDemo = async (demo: Demo): Promise<void> => {
     cellSamplingOverride.cellSampling !== undefined
       ? `forced ${cellSamplingOverride.cellSampling} (DEMO_CELL_SAMPLING=${cellSamplingEnv})`
       : `nearest (default)`;
+  const compressionStatus =
+    compressionOverride.compression !== undefined
+      ? `forced ${compressionOverride.compression} (DEMO_COMPRESSION=${compressionEnv})`
+      : "auto (raw pixels on file medium, png inline)";
   const { cols, rows } = screen.getDisplaySize();
 
   const renderModeForced = initialRenderMode !== undefined;
@@ -232,6 +246,7 @@ export const runDemo = async (demo: Demo): Promise<void> => {
   logLine(`dirty rects ${dirtyRectsStatus}`);
   logLine(`file transfer ${fileTransferStatus}`);
   logLine(`cell sampling ${cellSamplingStatus}`);
+  logLine(`compression ${compressionStatus}`);
   logLine(`display ${cols}x${rows} cells, status row ${screen.getStatusRow()}`);
 
   // Mode cycle: drop the kitty entry when the terminal cannot parse kitty
@@ -331,6 +346,7 @@ export const runDemo = async (demo: Demo): Promise<void> => {
     console.log(`  dirty rects    ${dirtyRectsStatus}`);
     console.log(`  file transfer  ${fileTransferStatus}`);
     console.log(`  cell sampling  ${cellSamplingStatus}`);
+    console.log(`  compression    ${compressionStatus}`);
     console.log(`  cell size      ${cellPixelSize ? `${cellPixelSize.width}x${cellPixelSize.height}px (terminal-reported)` : "not reported, fallback ratio used"}`);
     console.log(`  display        ${cols}x${rows} cells`);
     for (const line of rendererInitLines) {
