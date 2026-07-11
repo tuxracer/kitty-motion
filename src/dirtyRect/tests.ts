@@ -44,6 +44,47 @@ describe('computeDirtyRect', () => {
     expect(computeDirtyRect(curr, prev, 4, 4, 1)).toEqual({ x: 2, y: 1, width: 1, height: 1 });
     expect(computeDirtyRect(Uint16Array.from(prev), prev, 4, 4, 1)).toBeNull();
   });
+
+  it('handles rgb24 subarray views with a nonzero byteOffset', () => {
+    const OFFSET = 7;
+    const backingA = new Uint8Array(4 * 4 * RGB + OFFSET).fill(9);
+    const backingB = new Uint8Array(4 * 4 * RGB + OFFSET).fill(9);
+    const a = backingA.subarray(OFFSET);
+    const b = backingB.subarray(OFFSET);
+    expect(computeDirtyRect(a, b, 4, 4, RGB)).toBeNull();
+    a[(2 * 4 + 1) * RGB] = 200; // pixel (1,2)
+    expect(computeDirtyRect(a, b, 4, 4, RGB)).toEqual({ x: 1, y: 2, width: 1, height: 1 });
+  });
+
+  it('handles rgb15 subarray views with a nonzero byteOffset', () => {
+    const OFFSET = 3;
+    const backingA = new Uint16Array(4 * 4 + OFFSET).fill(0x1234);
+    const backingB = new Uint16Array(4 * 4 + OFFSET).fill(0x1234);
+    const a = backingA.subarray(OFFSET);
+    const b = backingB.subarray(OFFSET);
+    expect(computeDirtyRect(a, b, 4, 4, 1)).toBeNull();
+    a[3 * 4 + 0] = 0x7fff; // pixel (0,3)
+    expect(computeDirtyRect(a, b, 4, 4, 1)).toEqual({ x: 0, y: 3, width: 1, height: 1 });
+  });
+
+  it('matches an elementwise reference on a larger frame', () => {
+    const W = 64;
+    const H = 48;
+    const prev = new Uint8Array(W * H * RGB);
+    for (let i = 0; i < prev.length; i++) {
+      prev[i] = (i * 31 + 7) & 0xff;
+    }
+    const curr = prev.slice();
+    // Change a known region plus two stray pixels
+    for (let y = 10; y < 14; y++) {
+      for (let x = 20; x < 33; x++) {
+        curr[(y * W + x) * RGB + 1] ^= 0x55;
+      }
+    }
+    curr[(40 * W + 5) * RGB] ^= 0xff;
+    curr[(41 * W + 60) * RGB + 2] ^= 0xff;
+    expect(computeDirtyRect(curr, prev, W, H, RGB)).toEqual({ x: 5, y: 10, width: 56, height: 32 });
+  });
 });
 
 describe('unionRects', () => {

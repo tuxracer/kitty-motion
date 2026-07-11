@@ -13,7 +13,7 @@ numbers on exit):
 
 | Optimization | Measured effect |
 |---|---|
-| Diff skip: pixel-identical frames are never re-encoded | an idle frame costs one buffer compare and zero output |
+| Diff skip: pixel-identical frames are never re-encoded | an idle frame costs one native buffer compare and zero output (0.10 ms at 1280x720) |
 | Dirty-rect deltas: after the first frames, only the changed bounding rectangle is re-encoded and transmitted as an in-place frame edit | on game-like content (detailed 256x240 background, 16x16 moving sprite), 14x less encode CPU and 128x smaller payloads (89 KB full frame vs 700 byte delta) |
 | File-based transmission: frames travel as terminal-deleted temp files, the escape carries only the file path | pty traffic in the full-frame stress demo drops from 1,326 KB/s to 5 KB/s, and the 33 percent base64 inflation disappears |
 | Worker-thread PNG encoding | roughly 0.6 ms of deflate per frame runs off your game loop's thread, with automatic synchronous fallback |
@@ -173,6 +173,14 @@ Kitty scales a transmitted image to exactly fill the requested `cols x rows` cel
 After the first frames, only the changed bounding rectangle is re-encoded and transmitted, as a Kitty animation-protocol frame edit composited into the displayed image. Payload scales with the changed area instead of the frame size. Measured on game-like content (a detailed dithered 256x240 background with a 16x16 moving sprite, the kind of frame an emulator produces), a full frame costs 2.67 ms to encode and 89 KB to send, and the delta costs 0.19 ms and 700 bytes. When every pixel changes (scrolling, video), the delta degenerates to a full-frame edit and costs the same as before, so the worst case is never a regression.
 
 The rect bounds more than the encode. Color conversion and pointwise post-processing also run only within the transmitted rectangle. Pixels outside it are unchanged since the previous frame, so the renderer's RGB working buffer already holds their converted, processed values. Measured on the sprite scenario above with gamma, scanlines, and vignette enabled, the per-frame render cost drops from 0.50 ms to 0.20 ms. Effects that spread a pixel's influence (bloom, NTSC, curvature, chromatic aberration) already force full-frame transmits, so they never see a partial rect. (Replacing the blur loops' per-pixel `sum / windowSize` divisions with exact fixed-point reciprocal multiplies was tried and reverted: it measured 6 to 10 percent slower on an Apple M-series laptop, where the integer divide beats the extra branch and multiply.) Frames dropped by backpressure or coalescing have their damage rectangles unioned into the next frame, so no screen region can go stale. Requires terminal support, detected at startup by `detectKittyAnimationSupport()`. Terminals without it (or hosts setting `dirtyRects: false`) keep receiving full frames. Setting `dirtyRects: true` enables delta frames on terminals the probe rejected or never checked. It still requires `enableDiffRendering` and an integer `scale` of 1 or more, since fractional scales cannot map pixel-precise dirty rects onto the encoded output.
+
+### Native row compares in the diff scan
+
+The dirty-rect scan compares rows through `Buffer.prototype.compare` (native
+memcmp) instead of an elementwise loop. An unchanged frame is the scan's
+worst case, so this bounds the idle cost of large sources. Measured at
+1280x720 rgb24, the identical-frame scan drops from 5.39 ms to 0.10 ms per frame.
+Retro-resolution sources were already cheap and are unaffected.
 
 ### File-based transmission
 
