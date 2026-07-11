@@ -2,8 +2,9 @@
 export { Screen, createScreen } from './Screen/index.ts';
 export type { ScreenOptions, ScreenUpdatableOptions } from './Screen/index.ts';
 
-// Cross-module types
+// Cross-module types and constants
 export * from './types.ts';
+export { VERSION } from './consts.ts';
 
 // Rendering
 export { KittyRenderer } from './KittyRenderer/index.ts';

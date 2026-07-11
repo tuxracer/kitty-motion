@@ -1,6 +1,11 @@
 // Cross-module constants only. Constants used by a single module live in
 // that module's consts.ts.
 
+import packageJson from '../package.json' with { type: 'json' };
+
+/** Library version, read from package.json (inlined into the bundle at build time) */
+export const VERSION: string = packageJson.version;
+
 /** Bytes per pixel in RGB24 format */
 export const RGB24_BYTES_PER_PIXEL = 3;
 

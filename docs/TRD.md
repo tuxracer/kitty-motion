@@ -140,6 +140,7 @@ For building a custom pipeline instead of using `Screen`:
 - `computeDisplayLayout`, `DisplayLayout`, `DisplayLayoutOptions`: centered, aspect-correct cell-grid placement (shared by both renderers)
 - `rgbToAnsi256`, `rgbToAnsi16`, `convertFrameToRgb24`, `FrameToRgb24Options`, `buildGammaLUT`, `frameUnitsPerPixel`, `allocateFrameBuffer`, `allocateFrameBufferLike`, `isRgb15Buffer`: color quantization, gamma tables, framebuffer conversion, and framebuffer allocation primitives
 - `FrameBuffer`, `ColorSpace`, `Renderer`, `RenderMode`, `CapturedFrame`: shared framebuffer types, the renderer contract both renderers implement, and the RGB snapshot `captureRgb` returns
+- `VERSION`: the library's version string, read from package.json so it always matches the installed release
 
 ## Design notes
 

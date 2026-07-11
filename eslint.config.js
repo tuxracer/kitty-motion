@@ -73,7 +73,9 @@ export default [
           patterns: [
             {
               // Any specifier starting with ./ or ../ that does not end in .ts
-              regex: String.raw`^\.{1,2}($|/(?!.*\.ts$))`,
+              // (.json is also allowed; JSON imports work under plain node via
+              // the `with { type: "json" }` attribute)
+              regex: String.raw`^\.{1,2}($|/(?!.*\.(ts|json)$))`,
               message:
                 'Relative imports must include the .ts extension (e.g. "../Game/index.ts") so sources run under plain node.',
             },
