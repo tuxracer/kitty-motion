@@ -287,7 +287,10 @@ export class Screen {
  * animation support (dirty-rect delta frames), file transfer support
  * (temp-file payloads), and the terminal's real cell pixel size (aspect
  * correction). Probes made irrelevant by an explicit option (`renderMode`,
- * `dirtyRects`, `fileTransfer`) are skipped. Probe results are cached
+ * `dirtyRects`, `fileTransfer`) or by the delta policy (a file-medium
+ * terminal never uses deltas by default, so its animation probe is skipped)
+ * are skipped. Callers who plan to flip options later with `updateOptions()`
+ * should run the probes themselves first. Probe results are cached
  * process-wide, so running the `detect*` functions yourself beforehand also
  * works and makes the corresponding probe here free.
  *
@@ -303,11 +306,15 @@ export const createScreen = async (options: ScreenOptions): Promise<Screen> => {
   if (graphicsSupported) {
     // These probes write Kitty escape sequences, so only run them on
     // terminals that parse the protocol
-    if (options.dirtyRects === undefined) {
+    const fileMedium =
+      options.fileTransfer === undefined
+        ? await detectKittyFileTransferSupport()
+        : options.fileTransfer;
+    // The animation result only matters when the default delta policy can
+    // reach deltas: dirtyRects unset and no file medium (deltas only pay
+    // for themselves when PTY bandwidth is the bottleneck)
+    if (options.dirtyRects === undefined && !fileMedium) {
       await detectKittyAnimationSupport();
-    }
-    if (options.fileTransfer === undefined) {
-      await detectKittyFileTransferSupport();
     }
   }
   await detectCellPixelSize();

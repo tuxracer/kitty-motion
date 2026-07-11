@@ -861,3 +861,43 @@ describe('createScreen', () => {
     screen.dispose();
   });
 });
+
+describe('createScreen probe skipping', () => {
+  afterEach(() => {
+    resetKittyAnimationDetection();
+    resetKittyFileTransferDetection();
+  });
+
+  it('skips the animation probe when the file medium is forced on', async () => {
+    resetKittyAnimationDetection();
+    const stream = new FakeStream();
+    using screen = await createScreen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'kitty',
+      fileTransfer: true,
+      workerFactory: NO_WORKER,
+    });
+    expect(screen.getRenderMode()).toBe('kitty');
+    expect(getKittyAnimationSupported()).toBeNull(); // probe never ran
+    screen.dispose();
+  });
+
+  it('runs the animation probe when the file medium is unavailable', async () => {
+    resetKittyAnimationDetection();
+    resetKittyFileTransferDetection();
+    const stream = new FakeStream();
+    using screen = await createScreen({
+      sourceWidth: 4,
+      sourceHeight: 4,
+      output: stream,
+      renderMode: 'kitty',
+      workerFactory: NO_WORKER,
+    });
+    expect(screen.getRenderMode()).toBe('kitty');
+    // Non-TTY stdin makes both probes resolve false quickly, but they DID run
+    expect(getKittyAnimationSupported()).toBe(false);
+    screen.dispose();
+  });
+});
